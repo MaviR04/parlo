@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from "react-router";
 
-function Login() {
+function Login({setUser}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState(null); // status message
@@ -19,13 +19,17 @@ function Login() {
       );
 
       if (res.data.success) {
-        console.log(res.data)
+        setUser({ 
+          userID: res.data.userID, 
+          userRole: res.data.userRole, 
+          name: res.data.name 
+        });
         setStatus('✅ Login successful!') 
-        if(res.data.role == "Admin" && res.data.school === null){
-            navigate("/chat");
+        if(res.data.userRole == "Admin"){
+            navigate("/admin")
         }
         else{
-            navigate("/admin")
+             navigate("/chat")
         }
         
       } else {

@@ -1,5 +1,5 @@
 import React from "react";
-export function ChatTabs({name,isNewMessage, isSelected}) {
+export function ChatTabs({name, relation, child ,isSelected}) {
   return <div className='flex flex-col gap-5 p-1'>
           <div className= {isSelected ? 'bg-white w-full h-20 rounded-2xl shadow-md flex' : 'bg-white w-full h-20 rounded-2xl  flex' } >
              <div className="avatar avatar-placeholder p-4">
@@ -14,8 +14,8 @@ export function ChatTabs({name,isNewMessage, isSelected}) {
                 </div>
 
                 
-                <div className={ isNewMessage ? 'text-md font-bold text-blue-400 opacity-70' : 'text-md font-bold text-black opacity-0'}>
-                   New Messages 
+                <div className="text-md font-bold text-black opacity-50">
+                   Teaches {child} {relation} 
                 </div>
               </div>
 

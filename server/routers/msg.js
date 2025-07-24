@@ -6,37 +6,58 @@ import db from "../db.js"
 
 const router = express.Router();
 
+router.get("/childteachers", async (req, res) => {
+  const parentid = req.session.userid;
 
-router.get('/conversations', async (req, res) => {
-  
-  console.log(req.session.userID)
-  const userId = req.session.userID
-
-  const query = `
-    SELECT 
-      c.ConversationID,
-      u.UserID AS OtherUserID,
-      u.Fname AS OtherFname,
-      u.Lname AS OtherLname,
-      u.Role AS OtherRole
-    FROM Conversations c
-    JOIN Users u 
-      ON u.UserID = CASE 
-                      WHEN c.Recipient1 = $1 THEN c.Recipient2
-                      WHEN c.Recipient2 = $1 THEN c.Recipient1
-                    END
-    WHERE c.Recipient1 = $1 OR c.Recipient2 = $1
-    ORDER BY c.ConversationID DESC;
-  `;
+  if (!parentid) {
+    return res.status(401).json({ error: "Not logged in" });
+  }
 
   try {
-    const conversations = await db.any(query, [userId]);
-    res.json(conversations);
-    console.log(conversations)
+    const rows = await db.any(
+      `SELECT
+         c.childid,
+         c.fname AS child_fname,
+         c.lname AS child_lname,
+         u.userid AS teacher_id,
+         u.fname AS teacher_fname,
+         u.lname AS teacher_lname,
+         u.email AS teacher_email,
+         uc.role AS class_role
+       FROM children c
+       JOIN childclasses cc ON c.childid = cc.childid
+       JOIN userclasses uc ON cc.classid = uc.classid
+       JOIN users u ON uc.userid = u.userid
+       WHERE c.parentid = $1
+       ORDER BY c.childid, u.userid`,
+      [parentid]
+    );
+
+    // Group by child
+    const grouped = {};
+    for (const row of rows) {
+      const childKey = row.childid;
+      if (!grouped[childKey]) {
+        grouped[childKey] = {
+          childid: row.childid,
+          name: `${row.child_fname} ${row.child_lname}`,
+          teachers: []
+        };
+      }
+      grouped[childKey].teachers.push({
+        userid: row.teacher_id,
+        name: `${row.teacher_fname} ${row.teacher_lname}`,
+        email: row.teacher_email,
+        role: row.class_role
+      });
+    }
+
+    res.json(Object.values(grouped)); // Return as array
   } catch (err) {
-    console.error('Error fetching conversations:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error("Error fetching grouped teacher-child data:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 export default router

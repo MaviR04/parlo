@@ -104,7 +104,7 @@ router.post("/", async (req, res) => {
                   return res.status(500).json({ success: false });
                 }
                 
-                res.status(200).json({ success: true });
+                res.status(200).json({ success: true, userRole: data.role, name:data.fname + " " + data.lname,userID:data.userid });
               });
 
             
