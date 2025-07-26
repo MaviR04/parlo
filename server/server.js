@@ -8,6 +8,7 @@ import {createClient} from "redis"
 import session from "express-session"
 import cors from "cors";
 import users from './routers/users.js';
+import announcement from './routers/announcement.js';
 
 
 const app = express();
@@ -31,6 +32,7 @@ app.use(express.json());
 app.use('/auth',auth);
 app.use('/msg',msg)
 app.use('/admin',users);
+app.use('/announcement',announcement);
 
 
 

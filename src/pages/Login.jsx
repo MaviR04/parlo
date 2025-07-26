@@ -28,10 +28,13 @@ function Login({setUser}) {
         if(res.data.userRole == "Admin"){
             navigate("/admin")
         }
-        else{
-             navigate("/chat")
+        else if(res.data.userRole == "Teacher"){
+             navigate("/teacher")
         }
-        
+        else if(res.data.userRole == "Parent"){
+             navigate("/calendar")
+        }
+
       } else {
         setStatus('❌ Login failed. Check your credentials.');
       }

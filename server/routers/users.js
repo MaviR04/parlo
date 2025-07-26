@@ -134,7 +134,34 @@ router.post("/childclasses", async (req, res) => {
   }
 });
 
+router.get("/teaching-classes", async (req, res) => {
+  const userid = req.session.userID;
 
+  if (!userid) {
+    return res.status(401).json({ error: "Not logged in" });
+  }
+
+  try {
+    const classes = await db.any(
+      `
+      SELECT 
+        c.classid, 
+        c.classname, 
+        uc.role
+      FROM userclasses uc
+      JOIN classes c ON uc.classid = c.classid
+      WHERE uc.userid = $1
+        AND LOWER(uc.role) LIKE '%teacher%'
+      `,
+      [userid]
+    );
+
+    res.json(classes);
+  } catch (err) {
+    console.error("Error fetching teaching classes:", err);
+    res.status(500).json({ error: "Failed to fetch teaching classes" });
+  }
+});
 
 
 export default router;

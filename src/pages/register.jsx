@@ -26,6 +26,7 @@ export default function RegisterForm() {
     try {
       const res = await axios.post("http://localhost:3001/auth/account", formData);
       setMessage("Account created successfully!");
+      
     } catch (err) {
       setMessage(err.response?.data?.message || "Registration failed.");
     }
