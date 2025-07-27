@@ -3,8 +3,7 @@ import crypto from 'crypto';
 import auth from './routers/auth.js';
 import msg from './routers/msg.js'
 import { Server } from "socket.io"; 
-import {RedisStore} from "connect-redis"
-import {createClient} from "redis"
+import path from 'path'
 import session from "express-session"
 import cors from "cors";
 import users from './routers/users.js';
@@ -13,6 +12,14 @@ import announcement from './routers/announcement.js';
 
 const app = express();
 const connectedUsers = [];
+
+// Serve static files from the Vite dist folder
+app.use(express.static(path.resolve('client/dist')))
+
+// Catch-all for client-side routing
+app.get('*', (req, res) => {
+  res.sendFile(path.resolve('client/dist/index.html'))
+})
 
 app.use(cors({
   origin: 'http://localhost:5173', 
