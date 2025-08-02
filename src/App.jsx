@@ -15,7 +15,6 @@ function App() {
     <BrowserRouter>
     <Navbar />
     <Routes>
-      
       <Route path="/chat" element={<ChatApp user={user} />} />
       <Route path="/register" element={<Register />} />
       <Route path="/login" element={<Login setUser={setUser} />} />

@@ -89,9 +89,9 @@ router.post("/", async (req, res) => {
 
     if (checkPostVariables(postVar)) {
       db.one("SELECT * FROM users WHERE email = $1", [
-        req.body.email
+        req.body.email  
       ]).then((data) => {
-  
+        
         bcrypt.compare(req.body.password, data.passwordhash, (err, result) => {
           if (result) {
             req.session.userID = data.userid;

@@ -95,7 +95,7 @@ router.get("/for-parent", async (req, res) => {
     const announcements = await db.any(
       `
      SELECT 
-      a.announcementid AS id,
+      a.announcementid AS id, 
       a.title,
       a.description,
       to_char(a.start, 'YYYY-MM-DD HH24:MI') AS start,

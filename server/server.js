@@ -14,15 +14,16 @@ const app = express();
 const connectedUsers = [];
 
 // Serve static files from the Vite dist folder
-app.use(express.static(path.resolve('client/dist')))
+app.use(express.static(path.resolve('/dist')))
 
 // Catch-all for client-side routing
-app.get('*', (req, res) => {
-  res.sendFile(path.resolve('client/dist/index.html'))
+app.get('/*splat', (req, res) => {
+  res.sendFile(path.resolve('/dist/index.html'))
 })
 
+
 app.use(cors({
-  origin: 'http://localhost:5173', 
+  origin: 'http://localhost:5173',  
   credentials: true
 }))
 
@@ -51,7 +52,7 @@ const io = new Server(server,{
       origin:"http://localhost:5173"
     }
   });
-
+  
 io.engine.use(session);
 
 
