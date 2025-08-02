@@ -1,87 +1,79 @@
-import React, { useState } from 'react';
-import axios from 'axios';
-import { useNavigate } from "react-router";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "../axios";
 
-function Login({setUser}) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [status, setStatus] = useState(null); // status message
-  let navigate = useNavigate();
-  
-  const handleLogin = async (e) => {
+export default function Login({ setUser }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
 
     try {
-      const res = await axios.post(
-        'http://localhost:3001/auth/',
-        { email, password },
-        { withCredentials: true } 
-      );
+      const res = await api.post("/auth", { email, password });
 
       if (res.data.success) {
-        setUser({ 
-          userID: res.data.userID, 
-          userRole: res.data.userRole, 
-          name: res.data.name 
+        setUser({
+          userRole: res.data.userRole,
+          name: res.data.name,
+          userID: res.data.userID,
+          email,
         });
-        setStatus('✅ Login successful!') 
-        if(res.data.userRole == "Admin"){
-            navigate("/admin")
-        }
-        else if(res.data.userRole == "Teacher"){
-             navigate("/teacher")
-        }
-        else if(res.data.userRole == "Parent"){
-             navigate("/calendar")
-        }
 
+        if (res.data.userRole === "Admin") navigate("/admin");
+        else if (res.data.userRole === "Teacher") navigate("/teacher");
+        else if (res.data.userRole === "Parent") navigate("/calendar");
+        else navigate("/");
       } else {
-        setStatus('❌ Login failed. Check your credentials.');
+        setError("Invalid email or password.");
       }
     } catch (err) {
-      setStatus(`❌ Error: ${err.response?.data?.error || 'Login failed'}`);
+      setError("Login failed. Please try again.");
+      console.error(err);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gray-900 text-white px-4">
+    <div className="flex justify-center items-center h-screen bg-blue-400 text-white">
       <form
-        onSubmit={handleLogin}
-        className="bg-gray-800 p-8 rounded-2xl shadow-lg w-full max-w-md space-y-4"
+        onSubmit={handleSubmit}
+        className="bg-blue-500 p-6 rounded shadow-md w-80"
       >
-        <h2 className="text-2xl font-bold text-center">Login</h2>
-
+        <h2 className="text-xl font-bold mb-4 text-center">Login</h2>
+        {error && (
+          <div className="mb-4 text-red-300 font-semibold text-center">
+            {error}
+          </div>
+        )}
+        <label className="block mb-2 font-semibold">Email</label>
         <input
           type="email"
-          className="w-full p-2 rounded bg-gray-700 text-white"
-          placeholder="Email"
+          className="border border-white bg-white p-2 w-full mb-4 rounded text-blue-500 placeholder-blue-500"
+          placeholder="Enter your email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          autoFocus
         />
-
+        <label className="block mb-2 font-semibold">Password</label>
         <input
           type="password"
-          className="w-full p-2 rounded bg-gray-700 text-white"
-          placeholder="Password"
+          className="border border-white bg-white p-2 w-full mb-4 rounded text-blue-500 placeholder-blue-500"
+          placeholder="Enter your password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-
         <button
           type="submit"
-          className="w-full bg-blue-400 hover:bg-blue-600 p-2 rounded font-semibold"
+          className="bg-white text-blue-600 py-2 rounded hover:bg-gray-100 w-full font-semibold"
         >
           Login
         </button>
-
-        {status && (
-          <p className="text-sm text-center mt-2">{status}</p>
-        )}
       </form>
     </div>
   );
 }
-
-export default Login;

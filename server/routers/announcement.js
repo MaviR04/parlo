@@ -111,7 +111,7 @@ router.get("/for-parent", async (req, res) => {
     JOIN announcements a ON a.classid = c.classid
     JOIN users u ON u.userid = a.created_by
     JOIN userclasses uc ON uc.userid = u.userid AND uc.classid = a.classid
-    WHERE ch.parentid = 18
+    WHERE ch.parentid = $1
     ORDER BY a.start DESC
           `,
       [userID]
