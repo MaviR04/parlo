@@ -9,6 +9,7 @@ import cors from "cors";
 import users from './routers/users.js';
 import announcement from './routers/announcement.js';
 import teacher from "./routers/teacher.js";
+import termRoutes from "./routers/term.js";
 
 
 const app = express();
@@ -42,6 +43,7 @@ app.use('/msg', msg)
 app.use('/admin', users);
 app.use('/announcement', announcement);
 app.use('/teacher', teacher);
+app.use("/terms", termRoutes);
 
 
 const server = app.listen(process.env.API_PORT, () => {
