@@ -37,6 +37,7 @@ export default function AddClassForm() {
           <input
             id={key}
             type="text"
+            required
             value={form[key]}
             onChange={(e) => setForm({ ...form, [key]: e.target.value })}
             className="w-full p-2 rounded bg-white text-black"

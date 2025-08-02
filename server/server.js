@@ -23,6 +23,7 @@ const connectedUsers = [];
   res.sendFile(path.resolve('client/dist/index.html'))
 }) */
 
+
 app.use(cors({
   origin: 'http://localhost:5173',
   credentials: true
