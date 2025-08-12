@@ -845,10 +845,13 @@ router.get("/dashboard/student-trend/:childid", requireLogin, async (req, res) =
         // 4. Get grades for the subject in the date range
         const grades = await db.any(
             `SELECT subject, score, max_score, assessment_name, assessment_label, date_entered
-             FROM grades
-             WHERE childid = $1 AND classid = $2 AND subject = $3
-             AND date_entered BETWEEN $4::date AND $5::date
-             ORDER BY date_entered ASC`,
+   FROM grades
+   WHERE childid = $1
+     AND classid = $2
+     AND subject = $3
+     AND date_entered >= $4::timestamptz
+     AND date_entered < ($5::date + INTERVAL '1 day')
+   ORDER BY date_entered ASC`,
             [childid, classid, subject, startDate, endDate]
         );
 
