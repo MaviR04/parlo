@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 
 function colorCodeScore(score, max) {
@@ -22,6 +22,9 @@ export default function OverviewChart({
     sortAsc,
     setSortAsc,
 }) {
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10; // change as needed
+
     const overviewGrades = useMemo(() => {
         if (!grades || grades.length === 0) return [];
         if (!selectedTerm) return grades;
@@ -73,6 +76,11 @@ export default function OverviewChart({
             });
     }, [students, overviewGrades, search, sortKey, sortAsc]);
 
+    // Pagination logic
+    const totalPages = Math.ceil(overviewTableData.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const paginatedData = overviewTableData.slice(startIndex, startIndex + itemsPerPage);
+
     return (
         <div className="bg-white p-6 rounded-md shadow-md">
             <div className="mb-4 max-w-sm">
@@ -80,7 +88,7 @@ export default function OverviewChart({
                     type="text"
                     placeholder="Search student by name..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
                     className="border text-gray-900 border-gray-400 rounded-md px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
             </div>
@@ -114,27 +122,27 @@ export default function OverviewChart({
                         <tr>
                             <th
                                 className="border border-gray-300 px-4 py-2 text-left text-gray-900 font-semibold cursor-pointer"
-                                onClick={() => setSortKey("name")}
+                                onClick={() => { setSortKey("name"); setSortAsc(!sortAsc); }}
                             >
                                 Student {sortKey === "name" ? (sortAsc ? "▲" : "▼") : ""}
                             </th>
                             <th
                                 className="border border-gray-300 px-4 py-2 text-left text-gray-900 font-semibold cursor-pointer"
-                                onClick={() => setSortKey("average")}
+                                onClick={() => { setSortKey("average"); setSortAsc(!sortAsc); }}
                             >
                                 Average % {sortKey === "average" ? (sortAsc ? "▲" : "▼") : ""}
                             </th>
                         </tr>
                     </thead>
                     <tbody>
-                        {overviewTableData.length === 0 ? (
+                        {paginatedData.length === 0 ? (
                             <tr>
                                 <td colSpan={2} className="text-center py-4 text-gray-500">
                                     No data found
                                 </td>
                             </tr>
                         ) : (
-                            overviewTableData.map((row) => (
+                            paginatedData.map((row) => (
                                 <tr key={row.childid} className={colorCodeScore(row.average, 100)}>
                                     <td className="border border-gray-300 px-4 py-2 text-gray-900">{row.name}</td>
                                     <td className="border border-gray-300 px-4 py-2 text-gray-900">{row.average.toFixed(1)}%</td>
@@ -144,6 +152,27 @@ export default function OverviewChart({
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+                <div className="flex justify-center mt-4 gap-2">
+                    <button
+                        onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                    >
+                        Prev
+                    </button>
+                    <span className="px-2 py-1">{currentPage} / {totalPages}</span>
+                    <button
+                        onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                    >
+                        Next
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

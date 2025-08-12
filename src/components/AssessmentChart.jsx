@@ -12,12 +12,11 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// Colors based on percentage
 function colorCodeScore(score, max) {
     const percent = (score / max) * 100;
-    if (percent >= 75) return "rgba(34, 197, 94, 0.6)";    // green
-    if (percent >= 50) return "rgba(234, 179, 8, 0.6)";    // yellow
-    return "rgba(239, 68, 68, 0.6)";                       // red
+    if (percent >= 75) return "rgba(34, 197, 94, 0.6)";
+    if (percent >= 50) return "rgba(234, 179, 8, 0.6)";
+    return "rgba(239, 68, 68, 0.6)";
 }
 
 function colorClassForTable(score, max) {
@@ -27,7 +26,6 @@ function colorClassForTable(score, max) {
     return "bg-red-100";
 }
 
-// Bin ranges
 const bins = [
     { label: "90-100", min: 90, max: 100 },
     { label: "80-89", min: 80, max: 89 },
@@ -51,6 +49,10 @@ export default function AssessmentChart({
     students = [],
 }) {
     const [scoreRangeFilter, setScoreRangeFilter] = useState(null);
+
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
     const assessGrades = useMemo(() => {
         if (!selectedTerm || !selectedAssessment) return [];
@@ -79,7 +81,6 @@ export default function AssessmentChart({
         };
     }, [assessGrades]);
 
-    // Histogram bins
     const binCounts = bins.map(({ label, min, max }) => {
         const studentsInBin = assessGrades.filter((g) => {
             const percent = (g.score / g.max_score) * 100;
@@ -164,6 +165,13 @@ export default function AssessmentChart({
             });
     }, [assessGrades, studentMap, search, sortKey, sortAsc, scoreRangeFilter]);
 
+    // Pagination calculations
+    const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
+    const paginatedData = filteredTableData.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
     if (!selectedTerm) return <p className="text-red-600 font-semibold">Please select a term first.</p>;
 
     return (
@@ -172,7 +180,10 @@ export default function AssessmentChart({
                 <label className="block mb-1 font-semibold">Select Assessment</label>
                 <select
                     value={selectedAssessment}
-                    onChange={(e) => setSelectedAssessment(e.target.value)}
+                    onChange={(e) => {
+                        setSelectedAssessment(e.target.value);
+                        setCurrentPage(1); // reset page on selection change
+                    }}
                     className="w-full border px-4 py-2 rounded-md"
                 >
                     {assessments.map((a, idx) => (
@@ -188,14 +199,14 @@ export default function AssessmentChart({
                     type="text"
                     placeholder="Search student..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                        setSearch(e.target.value);
+                        setCurrentPage(1);
+                    }}
                     className="w-full border px-4 py-2 rounded-md"
                 />
             </div>
 
-
-
-            {/* Stats */}
             <div className="mb-4 text-gray-900 font-semibold space-x-6">
                 <span>📉 Min: {stats.min}</span>
                 <span>📈 Max: {stats.max}</span>
@@ -206,7 +217,6 @@ export default function AssessmentChart({
                 <Bar data={chartData} options={chartOptions} />
             </div>
 
-            {/* Score Range Filter */}
             <div className="mb-4 max-w-sm">
                 <label className="block font-semibold mb-1">Filter by Score Range</label>
                 <select
@@ -214,6 +224,7 @@ export default function AssessmentChart({
                     onChange={(e) => {
                         const selected = bins.find((b) => b.label === e.target.value);
                         setScoreRangeFilter(selected || null);
+                        setCurrentPage(1);
                     }}
                     className="w-full border px-4 py-2 rounded-md"
                 >
@@ -246,7 +257,7 @@ export default function AssessmentChart({
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredTableData.map((row, i) => (
+                        {paginatedData.map((row, i) => (
                             <tr key={i} className={colorClassForTable(row.score, row.max_score)}>
                                 <td className="border px-3 py-2">{row.name}</td>
                                 <td className="border px-3 py-2">{row.score}</td>
@@ -257,6 +268,27 @@ export default function AssessmentChart({
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="flex justify-between items-center mt-4">
+                <button
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((p) => p - 1)}
+                    className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                >
+                    Prev
+                </button>
+                <span>
+                    Page {currentPage} of {totalPages}
+                </span>
+                <button
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => p + 1)}
+                    className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50"
+                >
+                    Next
+                </button>
             </div>
         </div>
     );
