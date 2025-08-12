@@ -46,9 +46,25 @@ function Navbar({ user, setUser }) {
               </>
             )}
             {user.userRole === "Parent" && (
-              <Link to="/calendar" className="hover:text-blue-300">
-                Parent Calendar
-              </Link>
+              <>
+                <Link to="/parent-dashboard" className="hover:text-blue-300">
+                  Parent Dashboard
+                </Link>
+                <Link to="/calendar" className="hover:text-blue-300">
+                  Parent Calendar
+                </Link>
+              </>
+            )}
+
+            {user.userRole === "Coach" && (
+              <>
+                <Link to="/coach-dashboard" className="hover:text-blue-300">
+                  Coach Dashboard
+                </Link>
+                <Link to="/coach-calendar" className="hover:text-blue-300">
+                  Coach Calendar
+                </Link>
+              </>
             )}
 
             <button

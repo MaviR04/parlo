@@ -13,7 +13,8 @@ export default function Login({ setUser }) {
     setError("");
 
     try {
-      const res = await api.post("/auth", { email, password });
+      const res = await api.post("/auth", { email, password }, { withCredentials: true });
+
 
       if (res.data.success) {
         setUser({
@@ -25,6 +26,7 @@ export default function Login({ setUser }) {
 
         if (res.data.userRole === "Admin") navigate("/admin");
         else if (res.data.userRole === "Teacher") navigate("/teacher");
+        else if (res.data.userRole === "Coach") navigate("/coach-dashboard");
         else if (res.data.userRole === "Parent") navigate("/calendar");
         else navigate("/");
       } else {

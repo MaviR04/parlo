@@ -1,4 +1,3 @@
-// TeacherDashboard.jsx
 import { useEffect, useState } from "react";
 import api from "../axios";
 import TeacherMiniNav from "../components/TeacherMiniNav";
@@ -6,7 +5,11 @@ import { Link } from "react-router-dom";
 
 export default function TeacherDashboard() {
     const [classes, setClasses] = useState([]);
-    const [roles, setRoles] = useState({ isClassTeacher: false, isSubjectTeacher: false });
+    const [roles, setRoles] = useState({
+        isClassTeacher: false,
+        isSubjectTeacher: false,
+        classname: null,
+    });
     const [selectedClassId, setSelectedClassId] = useState(null);
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -17,11 +20,11 @@ export default function TeacherDashboard() {
             try {
                 const [classesRes, rolesRes] = await Promise.all([
                     api.get("/teacher/classes"),
-                    api.get("/teacher/roles")
+                    api.get("/users/me/roles", { withCredentials: true }),
                 ]);
                 setClasses(classesRes.data);
-                setRoles(rolesRes.data);
-            } catch {
+                setRoles(rolesRes.data); // <-- includes teachesGrades
+            } catch (e) {
                 setError("Failed to load teacher data");
             } finally {
                 setLoading(false);
@@ -41,56 +44,72 @@ export default function TeacherDashboard() {
         }
     };
 
-    if (loading) return <p>Loading teacher dashboard...</p>;
-    if (error) return <p className="text-red-600">{error}</p>;
+    if (loading)
+        return (
+            <p className="text-center text-gray-500 mt-10">
+                Loading teacher dashboard...
+            </p>
+        );
+    if (error)
+        return (
+            <p className="text-center text-red-600 mt-10">
+                {error}
+            </p>
+        );
 
     return (
-        <div >
+        <div>
             {/* Mini Nav */}
-            <TeacherMiniNav roles={roles} />
-            <div className="ml-4" >
+            <TeacherMiniNav roles={roles} classid={selectedClassId} />
 
 
-                <h1 className="text-2xl font-bold mt-4 mb-2">My Classes</h1>
+            <div className="min-h-screen bg-gray-50 px-4 py-6">
+                <div className="ml-4">
+                    <h1 className="text-3xl font-semibold text-gray-800 mb-6">My Classes</h1>
 
-                {classes.length === 0 ? (
-                    <p>You are not assigned to any classes.</p>
-                ) : (
-                    <ul className="list-disc pl-6">
-                        {classes.map(c => (
-                            <li
-                                key={c.classid}
-                                className={`py-1 cursor-pointer ${selectedClassId === c.classid ? "font-bold text-blue-700" : ""}`}
-                                onClick={() => fetchStudents(c.classid)}
-                            >
-                                {c.classname} – <span className="italic">{c.role}</span>
-                            </li>
-                        ))}
-                    </ul>
-                )}
+                    {classes.length === 0 ? (
+                        <p className="text-gray-600">You are not assigned to any classes.</p>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                            {classes.map((c) => (
+                                <div
+                                    key={c.classid}
+                                    onClick={() => fetchStudents(c.classid)}
+                                    className={`p-4 rounded-xl cursor-pointer border transition-all duration-200 shadow-sm ${selectedClassId === c.classid
+                                        ? "bg-blue-100 border-blue-400"
+                                        : "bg-white hover:bg-gray-50 hover:shadow-md hover:border-blue-200"
+                                        }`}
+                                >
+                                    <h2 className="text-lg font-medium text-gray-800">{c.classname}</h2>
+                                    <p className="text-sm text-gray-500 italic">{c.role}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
 
-                {/* Students List */}
-                {selectedClassId && (
-                    <div className="mt-4 ">
-                        <h2 className="text-xl font-semibold">Students</h2>
-                        {students.length === 0 ? (
-                            <p>No students found for this class.</p>
-                        ) : (
-                            <ul className="mt-2">
-                                {students.map(s => (
-                                    <li key={s.childid}>
+                    {selectedClassId && (
+                        <div className="mt-8">
+                            <h2 className="text-2xl font-semibold text-gray-800 mb-4">Students</h2>
+                            {students.length === 0 ? (
+                                <p className="text-gray-600">No students found for this class.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                    {students.map((s) => (
                                         <Link
+                                            key={s.childid}
                                             to={`/teacher/student/${s.childid}`}
-                                            className="text-blue-600 hover:underline"
+                                            className="block p-3 bg-white rounded-xl border shadow-sm hover:shadow-md hover:bg-gray-50 transition hover:border-blue-300"
                                         >
-                                            {s.fname} {s.lname}
+                                            <p className="text-gray-800 font-medium">
+                                                {s.fname} {s.lname}
+                                            </p>
                                         </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                )}
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

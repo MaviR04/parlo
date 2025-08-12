@@ -89,9 +89,9 @@ router.post("/", async (req, res) => {
 
     if (checkPostVariables(postVar)) {
       db.one("SELECT * FROM users WHERE email = $1", [
-        req.body.email  
+        req.body.email
       ]).then((data) => {
-        
+
         bcrypt.compare(req.body.password, data.passwordhash, (err, result) => {
           if (result) {
             req.session.userID = data.userid;
@@ -165,14 +165,31 @@ router.post("/logout", (req, res) => {
 
 
 // Get current logged in user info
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   if (req.session && req.session.userID) {
-    res.json({
-      userID: req.session.userID,
-      userRole: req.session.userRole,
-      name: req.session.name,
-      schoolID: req.session.schoolID || null
-    });
+    const userID = req.session.userID;
+
+    try {
+      // Get classname if this user is class teacher
+      const classRow = await db.oneOrNone(
+        `SELECT classid, classname FROM classes WHERE classteacher = $1 LIMIT 1`,
+        [userID]
+      );
+
+      res.json({
+        userID: userID,
+        userRole: req.session.userRole,
+        name: req.session.name,
+        schoolID: req.session.schoolID || null,
+        isClassTeacher: !!classRow,
+        classid: classRow ? classRow.classid : null,
+        classname: classRow ? classRow.classname : null
+      });
+    } catch (err) {
+      console.error("Error in /me:", err);
+      res.status(500).json({ error: "Failed to fetch user profile" });
+    }
+
   } else {
     res.status(401).json({ error: 'Not logged in' });
   }

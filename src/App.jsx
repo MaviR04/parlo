@@ -1,18 +1,29 @@
-// At the very top of App.jsx
-import { useState, useEffect } from "react";  // import both useState and useEffect here
+import { useState, useEffect } from "react";
 import api from "./axios";
+import { BrowserRouter, Routes, Route } from "react-router";
 
-import Login from './pages/Login.jsx'
-import AdminPanel from './pages/AdminPanel.jsx'
-import Register from './pages/register.jsx'
-import { BrowserRouter, Routes, Route } from "react-router"
-import CalendarApp from './pages/TeacherCalendar.jsx'
-import ParentCalendarApp from './pages/ParentCalender.jsx'
-import Navbar from './components/Navbar.jsx'
-//import TeacherDashboard from '"./pages/TeacherDashboard.jsx"'\
-import TeacherDashboard from "./pages/TeacherDashBoard.jsx"
-import StudentProfile from "./pages/StudentProfile"
-import TeacherAttendancePage from "./pages/AttendancePage.jsx"
+import Login from './pages/Login.jsx';
+import Register from './pages/register.jsx';
+import AdminPanel from './pages/AdminPanel.jsx';
+import CalendarApp from './pages/TeacherCalendar.jsx';
+import ParentCalendarApp from './pages/ParentCalender.jsx';
+import TeacherDashboard from "./pages/TeacherDashBoard.jsx";
+import StudentProfile from "./pages/StudentProfile.jsx";
+
+
+import BehaviourPage from "./pages/BehaviourPage.jsx";
+import EnterGrades from "./pages/EnterGrades.jsx";
+import MySubjectsPage from "./pages/MySubjectsPage.jsx";
+import Navbar from './components/Navbar.jsx';
+
+import AcademicDashboard from './pages/AcademicDashboard.jsx';
+import CoachDashboard from "./pages/CoachDashboard.jsx";
+import CoachLogPage from "./pages/CoachLogPage.jsx";
+import CoachHistoryPage from "./pages/CoachHistoryPage.jsx";
+import BadgeDistribution from "./pages/CoachBadgeDistributionPage.jsx";
+
+import GeneralComments from "./pages/GeneralCommentsPage.jsx";
+import ParentDashboard from "./pages/ParentDashboard.jsx";
 
 
 function App() {
@@ -20,17 +31,32 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchCurrentUser() {
+    const boot = async () => {
       try {
-        const res = await api.get("/auth/me");
-        setUser(res.data);
+        // Get current session user
+        const meRes = await api.get("/auth/me", { withCredentials: true });
+        const baseUser = meRes.data || {};
+
+        // If teacher, get detailed roles for nav visibility
+        if (baseUser.userRole === "Teacher") {
+          try {
+            const rolesRes = await api.get("/users/me/roles", { withCredentials: true });
+            setUser({ ...baseUser, roles: rolesRes.data });
+          } catch (e) {
+            console.error("Failed to load teacher roles on boot:", e);
+            setUser({ ...baseUser, roles: null }); // keep app usable
+          }
+        } else {
+          setUser(baseUser);
+        }
       } catch (err) {
+        // Not logged in or error fetching session
         setUser({});
       } finally {
         setLoading(false);
       }
-    }
-    fetchCurrentUser();
+    };
+    boot();
   }, []);
 
   if (loading) {
@@ -44,6 +70,7 @@ function App() {
   return (
     <BrowserRouter>
       <Navbar user={user} setUser={setUser} />
+
       <Routes>
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
@@ -52,11 +79,26 @@ function App() {
         <Route path="/teacher-dashboard" element={<TeacherDashboard user={user} />} />
         <Route path="/calendar" element={<ParentCalendarApp user={user} />} />
         <Route path="/teacher/student/:childId" element={<StudentProfile />} />
-        <Route path="/teacher/attendance" element={<TeacherAttendancePage />} />
+       
+        <Route path="/teacher/behaviour" element={<BehaviourPage user={user} />} />
+        <Route path="/teacher/grades" element={<EnterGrades />} />
+        <Route path="/teacher/my-subjects" element={<MySubjectsPage />} />
+        <Route path="/teacher/academic-dashboard/:classid" element={<AcademicDashboard />} />
+        <Route path="/coach-dashboard" element={<CoachDashboard user={user} />} />
+        <Route path="/coach/student/:childId" element={<StudentProfile />} />
+        <Route path="/coach-log" element={<CoachLogPage />} />
+        <Route path="/coach-history" element={<CoachHistoryPage />} />
+        <Route path="/coach-badge" element={<BadgeDistribution />} />
+        <Route path="/coach/general-comments" element={<GeneralComments currentUser={user} />} />
+        <Route path="/teacher/general-comments" element={<GeneralComments currentUser={user} />} />
+        <Route path="/parent-dashboard" element={<ParentDashboard user={user} />} />
+        <Route path="/parent/student/:childId" element={<StudentProfile />} />
+
+
 
       </Routes>
     </BrowserRouter>
-  )
+  );
 }
 
 export default App;

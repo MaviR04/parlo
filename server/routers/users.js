@@ -6,7 +6,10 @@ import session from "express-session";
 const router = express.Router();
 
 // Insert a new user (teacher, admin, parent, etc.)
-
+function requireLogin(req, res, next) {
+  if (!req.session.userID) return res.status(401).json({ error: "Not logged in" });
+  next();
+}
 router.post("/users", async (req, res) => {
   const { fname, lname, email, passwordhash, role } = req.body;
 
@@ -160,6 +163,56 @@ router.get("/teaching-classes", async (req, res) => {
   } catch (err) {
     console.error("Error fetching teaching classes:", err);
     res.status(500).json({ error: "Failed to fetch teaching classes" });
+  }
+});
+
+
+
+// Get current user's roles (class teacher / subject teacher)
+
+router.get("/me/roles", requireLogin, async (req, res) => {
+  const userId = req.session.userID;
+
+  try {
+    const homeroom = await db.oneOrNone(
+      `SELECT c.classid, c.classname
+       FROM classes c
+       WHERE c.classteacher = $1
+       LIMIT 1`,
+      [userId]
+    );
+
+    const subjectClasses = await db.any(
+      `SELECT DISTINCT c.classname
+     FROM userclasses uc
+     JOIN classes c ON c.classid = uc.classid
+    WHERE uc.userid = $1
+      AND LOWER(uc.role) LIKE '%teacher%'
+      AND LOWER(uc.role) NOT LIKE 'class%'`,
+      [userId]
+    );
+
+    const extractGrade = (s) => {
+      const m = String(s || "").match(/(\d{1,2})/); // robust: any first number
+      return m ? parseInt(m[1], 10) : null;
+    };
+
+    const teachesGrades = Array.from(new Set(
+      subjectClasses
+        .map(r => extractGrade(r.classname))
+        .filter(n => Number.isFinite(n))
+    )).sort((a, b) => a - b);
+
+    res.json({
+      isClassTeacher: !!homeroom,
+      isSubjectTeacher: teachesGrades.length > 0,
+      classname: homeroom?.classname ?? null,
+      classid: homeroom?.classid ?? null,
+      teachesGrades
+    });
+  } catch (err) {
+    console.error("Error fetching roles:", err);
+    res.status(500).json({ error: "Failed to load roles" });
   }
 });
 
