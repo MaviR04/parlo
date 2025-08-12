@@ -53,15 +53,34 @@ export default function ClassOverview({ classid, termid }) {
     if (loading) return <p className="text-gray-700">Loading summary...</p>;
     if (error) return <p className="text-red-600">{error}</p>;
 
-    const { subjectAverages, topPerformers, underperformers } = summary;
+    const { subjectAverages = [], topPerformers = [], underperformers = [] } = summary || {};
+
+    // NEW: thresholds & distinct-subject count guard
+    const TOP_THRESHOLD = 50;
+
+    const safeSubjectCount = subjectAverages.length || 8; // fallback to 8 if not provided
+
+    const topFiltered = topPerformers
+        .filter((p) => parseFloat(p.average) >= TOP_THRESHOLD);
+
+    const underFiltered = underperformers
+        .filter((p) => parseFloat(p.average) < TOP_THRESHOLD)
+        .map((p) => ({
+            ...p,
+            // Prefer backend-provided distinct count; otherwise clamp to max subjects
+            below50Subjects:
+                p.below50Subjects ??
+                p.below50CountDistinct ??
+                Math.min(Number(p.below50Count ?? 0), safeSubjectCount),
+        }));
 
     const chartData = {
-        labels: subjectAverages.map(s => s.subject),
+        labels: subjectAverages.map((s) => s.subject),
         datasets: [
             {
                 label: "Average (%)",
-                data: subjectAverages.map(s => parseFloat(s.average)),
-                backgroundColor: subjectAverages.map(s => colorCodeScore(parseFloat(s.average))),
+                data: subjectAverages.map((s) => parseFloat(s.average)),
+                backgroundColor: subjectAverages.map((s) => colorCodeScore(parseFloat(s.average))),
             },
         ],
     };
@@ -113,10 +132,7 @@ export default function ClassOverview({ classid, termid }) {
                             </thead>
                             <tbody>
                                 {subjectAverages.map((s, idx) => (
-                                    <tr
-                                        key={idx}
-                                        className={`${colorClassForTable(parseFloat(s.average))}`}
-                                    >
+                                    <tr key={idx} className={colorClassForTable(parseFloat(s.average))}>
                                         <td className="border px-3 py-2">{s.subject}</td>
                                         <td className="border px-3 py-2">{s.average}%</td>
                                     </tr>
@@ -127,14 +143,14 @@ export default function ClassOverview({ classid, termid }) {
                 )}
             </div>
 
-            {/* Top Performers */}
+            {/* Top Performers (>= 50%) */}
             <div className="mb-8">
                 <h2 className="text-2xl font-bold mb-4 text-green-700">🏅 Top Performers</h2>
-                {topPerformers.length === 0 ? (
-                    <p className="text-gray-600">No top performers data available.</p>
+                {topFiltered.length === 0 ? (
+                    <p className="text-gray-600">No top performers (≥ 50%) this term.</p>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {topPerformers.map((s) => (
+                        {topFiltered.map((s) => (
                             <div
                                 key={s.childid}
                                 className="bg-green-100 border border-green-300 rounded-md px-4 py-2 shadow-sm"
@@ -147,21 +163,23 @@ export default function ClassOverview({ classid, termid }) {
                 )}
             </div>
 
-            {/* Underperformers */}
+            {/* Underperformers (< 50%) */}
             <div>
                 <h2 className="text-2xl font-bold mb-4 text-red-700">⚠️ Underperformers</h2>
-                {underperformers.length === 0 ? (
-                    <p className="text-gray-600">No underperformers this term. 🎉</p>
+                {underFiltered.length === 0 ? (
+                    <p className="text-gray-600">
+                        No underperformers (&lt; 50%) this term. 🎉
+                    </p>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {underperformers.map((s) => (
+                        {underFiltered.map((s) => (
                             <div
                                 key={s.childid}
                                 className="bg-red-100 border border-red-300 rounded-md px-4 py-2 shadow-sm"
                             >
                                 <p className="font-semibold text-red-900">{s.name}</p>
                                 <p className="text-sm text-red-800">
-                                    Below 50% in {s.below50Count} subject{s.below50Count > 1 ? "s" : ""}
+                                    Below 50% in {s.below50Subjects} subject{s.below50Subjects > 1 ? "s" : ""}
                                 </p>
                             </div>
                         ))}

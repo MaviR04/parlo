@@ -926,8 +926,107 @@ router.get("/roles", requireLogin, async (req, res) => {
 });
 
 
-router.get("/dashboard/class-summary", requireLogin, async (req, res) => {
+// router.get("/dashboard/class-summary", requireLogin, async (req, res) => {
 
+//     const userId = req.session.userID;
+//     const { classid, termid } = req.query;
+
+//     if (!classid || !termid) {
+//         return res.status(400).json({ error: "classid and termid are required" });
+//     }
+
+//     try {
+//         // ✅ Check if user is class teacher for this class
+//         const isClassTeacher = await db.oneOrNone(
+//             `
+//             SELECT 1 FROM userclasses
+//             WHERE classid = $1 AND userid = $2 AND LOWER(role) LIKE '%class teacher%'
+//             `,
+//             [classid, userId]
+//         );
+
+//         if (!isClassTeacher) {
+//             return res.status(403).json({ error: "Not authorized" });
+//         }
+
+//         // ✅ Get all grades for this class + term
+//         const grades = await db.any(
+//             `
+//             SELECT g.*, c.fname, c.lname
+//             FROM grades g
+//             JOIN children c ON g.childid = c.childid
+//             WHERE g.classid = $1 AND g.termid = $2
+//             `,
+//             [classid, termid]
+//         );
+
+//         // ✅ Calculate subject-wise averages
+//         const subjectMap = {}; // { subject: { totalScore, totalMax, count } }
+//         const studentMap = {}; // { childid: { name, total%, subjectCount, below50Count } }
+
+//         grades.forEach(g => {
+//             const percent = (parseFloat(g.score) / parseFloat(g.max_score)) * 100;
+
+//             // Subject average calc
+//             if (!subjectMap[g.subject]) {
+//                 subjectMap[g.subject] = { total: 0, count: 0 };
+//             }
+//             subjectMap[g.subject].total += percent;
+//             subjectMap[g.subject].count += 1;
+
+//             // Student performance calc
+//             if (!studentMap[g.childid]) {
+//                 studentMap[g.childid] = {
+//                     name: `${g.fname} ${g.lname}`,
+//                     totalPercent: 0,
+//                     subjectCount: 0,
+//                     below50Count: 0
+//                 };
+//             }
+//             studentMap[g.childid].totalPercent += percent;
+//             studentMap[g.childid].subjectCount += 1;
+//             if (percent < 50) {
+//                 studentMap[g.childid].below50Count += 1;
+//             }
+//         });
+
+//         // Format subject averages
+//         const subjectAverages = Object.entries(subjectMap).map(([subject, data]) => ({
+//             subject,
+//             average: (data.total / data.count).toFixed(1)
+//         }));
+
+//         // Format student performance
+//         const studentPerformances = Object.entries(studentMap).map(([childid, s]) => ({
+//             childid,
+//             name: s.name,
+//             average: (s.totalPercent / s.subjectCount).toFixed(1),
+//             below50Count: s.below50Count
+//         }));
+
+//         // Top 5 students
+//         const topPerformers = [...studentPerformances]
+//             .sort((a, b) => b.average - a.average)
+//             .slice(0, 5);
+
+//         // Underperformers: students with 2+ subjects < 50%
+//         const underperformers = studentPerformances.filter(s => s.below50Count >= 2);
+
+//         res.json({
+//             subjectAverages,
+//             topPerformers,
+//             underperformers
+//         });
+
+//     } catch (err) {
+//         console.error("Error in class summary:", err);
+//         res.status(500).json({ error: "Failed to fetch class summary" });
+//     }
+// });
+
+
+
+router.get("/dashboard/class-summary", requireLogin, async (req, res) => {
     const userId = req.session.userID;
     const { classid, termid } = req.query;
 
@@ -936,93 +1035,119 @@ router.get("/dashboard/class-summary", requireLogin, async (req, res) => {
     }
 
     try {
-        // ✅ Check if user is class teacher for this class
+        // ✅ authorize
         const isClassTeacher = await db.oneOrNone(
             `
-            SELECT 1 FROM userclasses
-            WHERE classid = $1 AND userid = $2 AND LOWER(role) LIKE '%class teacher%'
-            `,
+      SELECT 1 FROM userclasses
+      WHERE classid = $1 AND userid = $2 AND LOWER(role) LIKE '%class teacher%'
+      `,
             [classid, userId]
         );
-
         if (!isClassTeacher) {
             return res.status(403).json({ error: "Not authorized" });
         }
 
-        // ✅ Get all grades for this class + term
+        // ✅ pull all grades for class + term
         const grades = await db.any(
             `
-            SELECT g.*, c.fname, c.lname
-            FROM grades g
-            JOIN children c ON g.childid = c.childid
-            WHERE g.classid = $1 AND g.termid = $2
-            `,
+      SELECT g.childid, g.subject, g.score, g.max_score, c.fname, c.lname
+      FROM grades g
+      JOIN children c ON g.childid = c.childid
+      WHERE g.classid = $1 AND g.termid = $2
+      `,
             [classid, termid]
         );
 
-        // ✅ Calculate subject-wise averages
-        const subjectMap = {}; // { subject: { totalScore, totalMax, count } }
-        const studentMap = {}; // { childid: { name, total%, subjectCount, below50Count } }
+        // -------- build class subject averages (as before) --------
+        const subjectMap = new Map(); // subject -> { totalPct, count }
+        // -------- build per-student, per-subject aggregates --------
+        const perStudent = new Map(); // childid -> { name, subjects: Map(subject -> {totalPct, count}) }
 
-        grades.forEach(g => {
-            const percent = (parseFloat(g.score) / parseFloat(g.max_score)) * 100;
+        for (const g of grades) {
+            const pct = (Number(g.score) / Number(g.max_score)) * 100;
 
-            // Subject average calc
-            if (!subjectMap[g.subject]) {
-                subjectMap[g.subject] = { total: 0, count: 0 };
-            }
-            subjectMap[g.subject].total += percent;
-            subjectMap[g.subject].count += 1;
+            // class subject averages
+            if (!subjectMap.has(g.subject)) subjectMap.set(g.subject, { total: 0, count: 0 });
+            const sAgg = subjectMap.get(g.subject);
+            sAgg.total += pct;
+            sAgg.count += 1;
 
-            // Student performance calc
-            if (!studentMap[g.childid]) {
-                studentMap[g.childid] = {
+            // per-student, per-subject
+            if (!perStudent.has(g.childid)) {
+                perStudent.set(g.childid, {
                     name: `${g.fname} ${g.lname}`,
-                    totalPercent: 0,
-                    subjectCount: 0,
-                    below50Count: 0
-                };
+                    subjects: new Map(),
+                });
             }
-            studentMap[g.childid].totalPercent += percent;
-            studentMap[g.childid].subjectCount += 1;
-            if (percent < 50) {
-                studentMap[g.childid].below50Count += 1;
-            }
-        });
+            const stu = perStudent.get(g.childid);
+            if (!stu.subjects.has(g.subject)) stu.subjects.set(g.subject, { total: 0, count: 0 });
+            const subjAgg = stu.subjects.get(g.subject);
+            subjAgg.total += pct;
+            subjAgg.count += 1;
+        }
 
-        // Format subject averages
-        const subjectAverages = Object.entries(subjectMap).map(([subject, data]) => ({
+        // ✅ format subject averages (class-level)
+        const subjectAverages = Array.from(subjectMap.entries()).map(([subject, agg]) => ({
             subject,
-            average: (data.total / data.count).toFixed(1)
+            average: (agg.total / agg.count).toFixed(1),
         }));
 
-        // Format student performance
-        const studentPerformances = Object.entries(studentMap).map(([childid, s]) => ({
-            childid,
-            name: s.name,
-            average: (s.totalPercent / s.subjectCount).toFixed(1),
-            below50Count: s.below50Count
-        }));
+        // ✅ compute per-student overall = mean of subject averages (distinct subjects)
+        const studentPerformances = Array.from(perStudent.entries()).map(([childid, s]) => {
+            const subjectAveragesForStudent = Array.from(s.subjects.values()).map(
+                (agg) => agg.total / Math.max(1, agg.count)
+            );
 
-        // Top 5 students
-        const topPerformers = [...studentPerformances]
-            .sort((a, b) => b.average - a.average)
+            if (subjectAveragesForStudent.length === 0) {
+                return null; // no grades for this student in this term
+            }
+
+            const overall =
+                subjectAveragesForStudent.reduce((a, b) => a + b, 0) / subjectAveragesForStudent.length;
+
+            const below50Subjects = subjectAveragesForStudent.filter((v) => v < 50).length;
+
+            return {
+                childid: Number(childid),
+                name: s.name,
+                average: overall.toFixed(1),
+                below50Subjects, // 👈 distinct subjects (NOT tests)
+            };
+        }).filter(Boolean);
+
+        // ✅ thresholds
+        const TOP_THRESHOLD = 50;
+
+        // Top performers: overall >= 50
+        const topPerformers = studentPerformances
+            .filter((s) => parseFloat(s.average) >= TOP_THRESHOLD)
+            .sort((a, b) => parseFloat(b.average) - parseFloat(a.average))
             .slice(0, 5);
 
-        // Underperformers: students with 2+ subjects < 50%
-        const underperformers = studentPerformances.filter(s => s.below50Count >= 2);
+        // Underperformers: overall < 50
+        const underperformers = studentPerformances
+            .filter((s) => parseFloat(s.average) < TOP_THRESHOLD)
+            // keep property name the frontend expects + the new distinct count
+            .map((s) => ({
+                ...s,
+                below50Count: s.below50Subjects, // backward-compatible field name
+            }));
 
         res.json({
             subjectAverages,
             topPerformers,
-            underperformers
+            underperformers,
         });
-
     } catch (err) {
         console.error("Error in class summary:", err);
         res.status(500).json({ error: "Failed to fetch class summary" });
     }
 });
+
+
+
+
+
 
 
 // GET /dashboard/student-reports?classid=3&termid=6
