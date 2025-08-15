@@ -8,10 +8,10 @@
   max-height: 90vh;
 }
 
- .blue{
-    background-color: #2aa1e7 !important;
-    color:white !important;
-  }
+.blue {
+  background-color: #2aa1e7 !important;
+  color: white !important;
+}
 
 .red {
   background-color: #e74c3c !important;
@@ -61,4 +61,104 @@
 .maroon {
   background-color: #c0392b !important;
   color: white !important;
+}
+
+
+
+
+/* Print only the #print-target area */
+@page {
+  size: A4;
+  margin: 12mm 10mm 14mm 10mm;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #print-target,
+  #print-target * {
+    visibility: visible !important;
+  }
+
+  #print-target {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+
+  /* hide everything */
+  #print-target,
+  #print-target * {
+    visibility: visible !important;
+  }
+
+  /* show target */
+  #print-target {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  /* clean tables + no blank pages */
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .score-green {
+    background: #e8f5e9;
+  }
+
+  .score-yellow {
+    background: #fff8e1;
+  }
+
+  .score-red {
+    background: #ffebee;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .score-green {
+    background: #e8f5e9;
+  }
+
+  .score-yellow {
+    background: #fff8e1;
+  }
+
+  .score-red {
+    background: #ffebee;
+  }
+
+
+  .print-header {
+    background: #1976d2;
+    color: white;
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 18px;
+    margin-bottom: 14px;
+  }
+
+  .print-subject {
+    background: #2196f3;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 3px;
+    font-size: 14px;
+    margin: 10px 0 6px;
+  }
 }

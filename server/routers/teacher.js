@@ -1151,6 +1151,280 @@ router.get("/dashboard/class-summary", requireLogin, async (req, res) => {
 
 
 
+router.get("/dashboard/student-report-pdf/:childid", requireLogin, async (req, res) => {
+  const userId = req.session.userID;
+  const { childid } = req.params;
+  const { termid } = req.query;
+
+  if (!termid) return res.status(400).json({ error: "termid is required" });
+  if (!childid) return res.status(400).json({ error: "childid is required" });
+
+  try {
+    // 1) Authorization
+    const studentInfo = await db.oneOrNone(`
+      SELECT c.classid, c.classname, ch.fname, ch.lname
+      FROM children ch
+      JOIN childclasses cc ON cc.childid = ch.childid
+      JOIN classes c ON cc.classid = c.classid
+      WHERE ch.childid = $1 AND c.classteacher = $2
+      LIMIT 1
+    `, [childid, userId]);
+    if (!studentInfo) return res.status(403).json({ error: "Not authorized" });
+
+    // 2) Term
+    const term = await db.oneOrNone(`SELECT termid, name FROM terms WHERE termid = $1`, [termid]);
+    if (!term) return res.status(404).json({ error: "Term not found" });
+
+    // 3) Grades
+    const grades = await db.any(`
+      SELECT subject, assessment_name, score, max_score, comment
+      FROM grades
+      WHERE childid = $1 AND termid = $2
+      ORDER BY subject NULLS LAST, assessment_name NULLS LAST
+    `, [childid, termid]);
+
+    console.log("[PDF] Diagnostics:", {
+      childid, termid, termName: term.name,
+      student: `${studentInfo.fname} ${studentInfo.lname}`,
+      classname: studentInfo.classname,
+      gradeCount: grades.length,
+      sample: grades.slice(0, 3)
+    });
+
+    // 4) Filename
+    const safe = (s) => String(s || "").replace(/\s+/g, "_").replace(/[^\w\-\.]+/g, "");
+    const filename = `${safe(studentInfo.fname)}_${safe(studentInfo.lname)}_${safe(term.name)}.pdf`;
+
+    // 5) Start PDF
+    const doc = new PDFDocument({ size: "A4", margin: 40 });
+
+    // Headers BEFORE piping bytes
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-PDF-Layout", "compact-v5-gap14"); // marker to verify in Network tab
+
+    doc.on("error", (e) => { console.error("[PDFKit] error:", e); try { res.end(); } catch {} });
+    doc.pipe(res);
+
+    // ================== CLEAN TABLE LAYOUT HELPERS ==================
+    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const left = doc.page.margins.left;
+    const bottomLimit = () => doc.page.height - doc.page.margins.bottom;
+
+    // columns: Assessment | Score | Comment
+    const colWidths = [
+      Math.round(pageWidth * 0.32), // Assessment
+      Math.round(pageWidth * 0.18), // Score
+      Math.round(pageWidth * 0.50), // Comment
+    ];
+
+    // typography + paddings (measure == draw)
+    const TEXT_FONT = "Helvetica";
+    const TEXT_SIZE = 10.5;
+    const LINE_GAP = 0;   // tight line height
+    const PAD_X = 8;
+    const PAD_Y = 4;      // tight vertical padding
+    const ROW_MIN_H = 22; // min row height
+    const GAP_AFTER_TABLE_PX = 14; // 🔹 fixed pixel gap after each subject table
+
+    const resetTextStyle = () => doc.font(TEXT_FONT).fontSize(TEXT_SIZE);
+
+    // measure using SAME font/size/lineGap as drawing
+    const heightOf = (text, width) => {
+      resetTextStyle();
+      return doc.heightOfString(String(text ?? ""), {
+        width: Math.max(1, width - PAD_X * 2),
+        lineGap: LINE_GAP,
+        align: "left",
+      });
+    };
+
+    // page-break guard
+    const ensureSpace = (needed) => {
+      if (doc.y + needed > bottomLimit()) {
+        doc.addPage();
+        doc.y = doc.page.margins.top;
+      }
+    };
+
+    // blue bars (title/subject)
+    const drawBlueBar = (text, y, height = 24, color = "#1976d2") => {
+      doc.save();
+      doc.rect(left, y, pageWidth, height).fill(color);
+      doc.fillColor("white").font("Helvetica-Bold").fontSize(13)
+         .text(String(text ?? ""), left + PAD_X, y + (height - 13) / 2, {
+           width: pageWidth - PAD_X * 2,
+           align: "left",
+         });
+      doc.restore();
+      return y + height + 6;
+    };
+
+    // table header (sticky look, compact)
+    const drawTableHeader = (y) => {
+      const headers = ["Assessment", "Score", "Comment"];
+
+      // header background
+      doc.save();
+      doc.rect(left, y, pageWidth, 22).fill("#2196f3");
+      doc.restore();
+
+      // header text
+      doc.fillColor("white").font("Helvetica-Bold").fontSize(11);
+      let x = left;
+      headers.forEach((h, i) => {
+        doc.text(h, x + PAD_X, y + 5, {
+          width: colWidths[i] - PAD_X * 2,
+          align: i === 1 ? "center" : "left",
+        });
+        x += colWidths[i];
+      });
+
+      // header bottom rule
+      doc.save();
+      doc.lineWidth(0.8).strokeColor("#1875d1")
+         .moveTo(left, y + 22).lineTo(left + pageWidth, y + 22).stroke();
+      doc.restore();
+
+      return y + 22;
+    };
+
+    // single table row — compact, crisp borders, optional zebra
+    const drawRow = (cells, colors = [], zebra = false) => {
+      const heights = cells.map((t, i) => heightOf(t, colWidths[i]));
+      const rowH = Math.max(ROW_MIN_H, Math.max(...heights) + PAD_Y * 2);
+
+      ensureSpace(rowH);
+
+      const rowTop = doc.y;
+
+      // zebra background (optional)
+      if (zebra) {
+        doc.save();
+        doc.rect(left, rowTop, pageWidth, rowH).fill("#fbfdff");
+        doc.restore();
+      }
+
+      // grid lines
+      let x = left;
+      doc.save();
+      doc.lineWidth(0.6).strokeColor("#cfd4da");
+      doc.moveTo(left, rowTop).lineTo(left, rowTop + rowH);
+      for (let i = 0; i < colWidths.length; i++) {
+        x += colWidths[i];
+        doc.moveTo(x, rowTop).lineTo(x, rowTop + rowH);
+      }
+      doc.moveTo(left, rowTop).lineTo(left + pageWidth, rowTop);
+      doc.moveTo(left, rowTop + rowH).lineTo(left + pageWidth, rowTop + rowH);
+      doc.stroke();
+      doc.restore();
+
+      // text
+      x = left;
+      for (let i = 0; i < cells.length; i++) {
+        resetTextStyle();
+        doc.fillColor(colors[i] || "#111").text(
+          String(cells[i] ?? "-"),
+          x + PAD_X,
+          rowTop + PAD_Y,
+          {
+            width: colWidths[i] - PAD_X * 2,
+            lineGap: LINE_GAP,
+            align: i === 1 ? "center" : "left",
+          }
+        );
+        x += colWidths[i];
+      }
+
+      doc.y = rowTop + rowH;
+    };
+
+    // ================== CONTENT ==================
+
+    // tiny version marker to confirm you’re on this route
+    doc.save();
+    doc.font("Helvetica-Bold").fontSize(9).fillColor("#666");
+    doc.text("compact-v5-gap14", doc.page.width - doc.page.margins.right - 90, doc.page.margins.top - 8, {
+      width: 90, align: "right",
+    });
+    doc.restore();
+
+    // Title
+    let y = doc.page.margins.top;
+    y = drawBlueBar(
+      `${studentInfo.fname} ${studentInfo.lname} — ${studentInfo.classname} (${term.name})`,
+      y, 28, "#1976d2"
+    );
+    doc.y = y;
+
+    if (grades.length === 0) {
+      resetTextStyle();
+      doc.fillColor("#d32f2f").text("No grades available for this term.");
+      doc.end();
+      return;
+    }
+
+    // Group by subject
+    const subjectMap = {};
+    for (const g of grades) {
+      const subj = g.subject ?? "General";
+      (subjectMap[subj] ??= []).push(g);
+    }
+
+    // Subjects & rows
+    for (const [subject, rows] of Object.entries(subjectMap)) {
+      // Subject bar + header (avoid orphan)
+      ensureSpace(60);
+      y = drawBlueBar(subject, doc.y, 22, "#2196f3");
+      doc.y = y;
+      y = drawTableHeader(doc.y);
+      doc.y = y;
+
+      let rowIndex = 0;
+      for (const g of rows) {
+        const s = Number(g.score ?? 0);
+        const m = Number(g.max_score ?? 0);
+        const percent = m > 0 ? (s / m) * 100 : 0;
+        const scoreText = `${isFinite(s) ? s : 0} / ${isFinite(m) && m > 0 ? m : 0} (${percent.toFixed(1)}%)`;
+        const scoreColor = percent < 50 ? "#d32f2f" : percent < 75 ? "#ff8f00" : "#2e7d32";
+
+        const predictH = Math.max(
+          heightOf(g.assessment_name ?? "-", colWidths[0]),
+          heightOf(scoreText,                 colWidths[1]),
+          heightOf(g.comment ?? "-",          colWidths[2])
+        ) + PAD_Y * 2;
+
+        if (doc.y + predictH > bottomLimit()) {
+          // new page + repeat subject & header
+          doc.addPage();
+          let y2 = doc.page.margins.top;
+          y2 = drawBlueBar(subject, y2, 22, "#2196f3");
+          y2 = drawTableHeader(y2);
+          doc.y = y2;
+        }
+
+        drawRow(
+          [g.assessment_name ?? "-", scoreText, g.comment ?? "-"],
+          ["#111", scoreColor, "#111"],
+          (rowIndex++ % 2 === 1)
+        );
+      }
+
+      // 🔹 fixed pixel gap after each subject table
+      ensureSpace(GAP_AFTER_TABLE_PX);
+      doc.y += GAP_AFTER_TABLE_PX;
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error("[PDF] generation error:", err);
+    if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
 
 
 // GET /dashboard/student-reports?classid=3&termid=6
@@ -1311,130 +1585,12 @@ router.get("/dashboard/student-report/:childid", requireLogin, async (req, res) 
 
 
 
-router.get("/dashboard/student-report-pdf/:childid", requireLogin, async (req, res) => {
-    const userId = req.session.userID;
-    const { childid } = req.params;
-    const { termid } = req.query;
 
-    if (!termid) return res.status(400).json({ error: "termid is required" });
 
-    try {
-        const studentInfo = await db.oneOrNone(`
-            SELECT c.classid, c.classname, ch.fname, ch.lname
-            FROM children ch
-            JOIN childclasses cc ON cc.childid = ch.childid
-            JOIN classes c ON cc.classid = c.classid
-            WHERE ch.childid = $1 AND c.classteacher = $2
-            LIMIT 1
-        `, [childid, userId]);
 
-        if (!studentInfo) return res.status(403).json({ error: "Not authorized" });
 
-        const term = await db.oneOrNone(`SELECT name FROM terms WHERE termid = $1`, [termid]);
 
-        const grades = await db.any(`
-            SELECT subject, assessment_name, score, max_score, comment
-            FROM grades
-            WHERE childid = $1 AND termid = $2
-            ORDER BY subject, assessment_name
-        `, [childid, termid]);
 
-        const subjectMap = {};
-        grades.forEach(g => {
-            if (!subjectMap[g.subject]) subjectMap[g.subject] = [];
-            subjectMap[g.subject].push(g);
-        });
-
-        const doc = new PDFDocument({ size: 'A4', margin: 50 });
-        let buffers = [];
-        doc.on('data', buffers.push.bind(buffers));
-        doc.on('end', () => {
-            const pdfData = Buffer.concat(buffers);
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="${studentInfo.fname}_${studentInfo.lname}_Report.pdf"`);
-            res.send(pdfData);
-        });
-
-        const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-        const colWidths = [160, 160, pageWidth - 320]; // 3 columns
-
-        const drawTableHeader = (headers, y) => {
-            doc.rect(50, y, pageWidth, 20).fill('#93c5fd');
-            doc.fillColor('black').font('Helvetica-Bold').fontSize(12);
-            let x = 50;
-            headers.forEach((h, i) => {
-                doc.text(h, x + 5, y + 5, { width: colWidths[i], align: 'center' });
-                x += colWidths[i];
-            });
-            return y + 20;
-        };
-
-        const drawTableRow = (rowData, y) => {
-            doc.font('Helvetica').fontSize(11);
-            let x = 50;
-            rowData.forEach((text, i) => {
-                doc.rect(x, y, colWidths[i], 20).stroke(); // Cell border
-                doc.text(text, x + 5, y + 5, { width: colWidths[i] - 10, align: 'center' });
-                x += colWidths[i];
-            });
-            return y + 20;
-        };
-
-        // Title
-        doc.fontSize(18).font('Helvetica-Bold').fillColor('black')
-            .text(`${studentInfo.fname} ${studentInfo.lname} – ${studentInfo.classname} (${term?.name})`);
-        doc.moveDown(1);
-
-        let y = doc.y;
-
-        for (const [subject, rows] of Object.entries(subjectMap)) {
-            // Subject heading
-            doc.fontSize(14).font('Helvetica-Bold').fillColor('black').text(subject, 50, y);
-            y += 25;
-
-            // Table header
-            y = drawTableHeader(["Assessment", "Score", "Comment"], y);
-
-            // Table rows
-            for (const g of rows) {
-                const percent = (parseFloat(g.score) / parseFloat(g.max_score)) * 100;
-                const color = percent < 50 ? 'red' : 'green';
-                const scoreText = `${g.score} / ${g.max_score} (${percent.toFixed(1)}%)`;
-
-                // Check for page overflow
-                if (y > doc.page.height - 80) {
-                    doc.addPage();
-                    y = 50;
-                }
-
-                doc.fillColor('black');
-                y = drawTableRow(
-                    [
-                        g.assessment_name,
-                        { text: scoreText, color },
-                        g.comment || "-"
-                    ].map(cell => (typeof cell === "string" ? cell : "")),
-                    y
-                );
-
-                // Draw colored text manually after drawing score cell
-                const scoreX = 50 + colWidths[0];
-                doc.fillColor(color).text(scoreText, scoreX + 5, y - 15, {
-                    width: colWidths[1] - 10,
-                    align: 'center'
-                });
-            }
-
-            y += 20;
-        }
-
-        doc.end();
-
-    } catch (err) {
-        console.error("PDF generation error:", err);
-        res.status(500).json({ error: "Failed to generate PDF" });
-    }
-});
 
 
 router.get("/classes/my-classes", requireLogin, async (req, res) => {

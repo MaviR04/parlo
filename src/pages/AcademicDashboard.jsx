@@ -105,7 +105,7 @@ export default function AcademicDashboard() {
 
 
                     <YearOverviewChart classid={classid} schoolYear={selectedYear} />
-                    
+
 
                 </div>
             )}
@@ -124,7 +124,11 @@ export default function AcademicDashboard() {
 
             {/* Student Reports Tab */}
             {tab === "reports" && selectedTerm ? (
-                <StudentReports classid={classid} termid={selectedTerm.termid} />
+                <StudentReports
+                    classid={classid}
+                    termid={selectedTerm.termid}
+                    termname={selectedTerm.name}   // ← pass display name
+                />
             ) : tab === "reports" ? (
                 <p className="text-gray-600">Please select a term.</p>
             ) : null}
