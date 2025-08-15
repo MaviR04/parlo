@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import api from "../axios";
-import BehaviourOverview from "../components/BehaviourOverview";
-
+//import BehaviourOverview from "../components/BehaviourOverview";
+import BehaviourOverviewGrouped from "../components/BehaviourOverviewGrouped";
 /* ───────── Legend (1–3) ───────── */
 function Legend13() {
   return (
@@ -80,6 +80,33 @@ export default function BehaviourPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const itemsPerPage = 10; // ← keep only this declaration (avoid duplicates)
+
+  // ====== Conversation Help (modal) state & content ======
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalChildId, setModalChildId] = useState(null);
+  const conversationStarters = [
+    "I noticed some challenges this week, but I’m confident we can work together to improve.",
+    "There were a few moments needing reminders, but progress is within reach.",
+    "Let’s focus on small, achievable steps to build positive habits."
+  ];
+  const openConversationHelp = (childid) => {
+    setModalChildId(childid);
+    setModalOpen(true);
+  };
+  const insertConversationStarter = (starter) => {
+    if (modalChildId) {
+      setBehaviourData((prev) => ({
+        ...prev,
+        [modalChildId]: {
+          ...prev[modalChildId],
+          weekly_note:
+            (prev[modalChildId]?.weekly_note || "") +
+            ((prev[modalChildId]?.weekly_note ? " " : "") + starter),
+        },
+      }));
+    }
+    setModalOpen(false);
+  };
 
   const showToast = (msg) => {
     setToast(msg);
@@ -194,7 +221,7 @@ export default function BehaviourPage() {
             setEditedMap((prev) => ({ ...prev, [child.childid]: false }));
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     });
   }, [term, children, weekStartDate]);
 
@@ -302,6 +329,57 @@ export default function BehaviourPage() {
         </div>
       )}
 
+      {/* Conversation Help Modal (same vibe as grades) */}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setModalOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <h2 className="text-xl font-bold text-gray-900">Conversation Help</h2>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="px-3 py-1 rounded border bg-gray-50 hover:bg-gray-100 text-sm"
+                aria-label="Close"
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Choose a kind, constructive way to communicate the concern. You can edit it after inserting.
+            </p>
+
+            <div className="space-y-3">
+              {conversationStarters.map((starter, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => insertConversationStarter(starter)}
+                  className="w-full text-left p-3 rounded-lg border border-gray-300 hover:bg-blue-50 transition"
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-6 text-right">
+              <button
+                onClick={() => setModalOpen(false)}
+                className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-2 mb-4">
         <button
@@ -319,7 +397,8 @@ export default function BehaviourPage() {
       </div>
 
       {activeTab === "overview" ? (
-        <BehaviourOverview />
+        // <BehaviourOverview />
+        <BehaviourOverviewGrouped />
       ) : (
         <>
           <h1 className="text-2xl font-bold mb-1">📋 Behaviour Marking</h1>
@@ -433,10 +512,16 @@ export default function BehaviourPage() {
                         weekly_note: "",
                       };
 
+                    // Count ratings that are 2 or below
+                    const lowOrMidCount = ["focus_engagement", "respect_kindness", "self_management"].filter(
+                      (key) => Number(data[key]) <= 2
+                    ).length;
+
                     return (
                       <tr key={child.childid} className={rowColor(child.childid)}>
+                        {/* Name now shows First Last */}
                         <td className="px-3 py-2 border whitespace-nowrap">
-                          {child.lname}, {child.fname}
+                          {child.fname} {child.lname}
                         </td>
 
                         {["focus_engagement", "respect_kindness", "self_management"].map((key) => (
@@ -463,19 +548,32 @@ export default function BehaviourPage() {
                         ))}
 
                         <td className="px-3 py-2 border">
-                          <textarea
-                            rows={2}
-                            value={data.weekly_note || ""}
-                            onChange={(e) => updateBehaviour(child.childid, "weekly_note", e.target.value)}
-                            className="w-full border px-2 py-1 rounded resize-none"
-                            placeholder="Add note…"
-                          />
+                          <div className="flex flex-col gap-2">
+                            <textarea
+                              rows={2}
+                              value={data.weekly_note || ""}
+                              onChange={(e) => updateBehaviour(child.childid, "weekly_note", e.target.value)}
+                              className="w-full border px-2 py-1 rounded resize-none"
+                              placeholder="Add note…"
+                            />
+                            {lowOrMidCount >= 2 && (
+                              <button
+                                type="button"
+                                onClick={() => openConversationHelp(child.childid)}
+                                className="shrink-0 text-xs px-2 py-1 rounded border bg-blue-600 text-white hover:bg-blue-700"
+                                title="Open Conversation Help"
+                              >
+                                Conversation Help
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
                   })
                 )}
               </tbody>
+
             </table>
           </div>
 

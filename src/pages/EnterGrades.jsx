@@ -31,17 +31,63 @@ export default function EnterGrades() {
     const [selectedPast, setSelectedPast] = useState("");
 
     const autoSaveInterval = useRef(null);
+    const lowPromptShownRef = useRef(new Set()); // one-time toast per student
+
+    // Modal state
+    const [showPromptModal, setShowPromptModal] = useState(false);
+    const [selectedStudentId, setSelectedStudentId] = useState(null);
+
+    // ===== Conversation starters (parent-friendly, concise) =====
+    const lowScorePrompts = [
+        "Your child scored below expectations in this assessment, but with consistent support, I’m confident they can improve.",
+        "This result shows there’s room for growth, and I will focus on helping your child strengthen these skills.",
+        "While this score is lower than we aimed for, I’ve seen your child’s potential and will guide them toward better results next time.",
+        "We will work together on the key areas to help your child gain confidence and improve performance."
+    ];
+
+    // ===== UI helpers =====
+    const showToast = (msg) => {
+        setToastMsg(msg);
+        setTimeout(() => setToastMsg(""), 3000);
+    };
 
     const generateLabel = () => {
         if (!globalAssessmentName) return "";
         return manualLabelOverride || `${globalAssessmentName} - ${getMonthLabel()}`;
     };
 
-    const showToast = (msg) => {
-        setToastMsg(msg);
-        setTimeout(() => setToastMsg(""), 3000);
+    const getSubjectFromRole = (role) => {
+        if (!role) return "";
+        if (role.toLowerCase().includes("teacher")) {
+            return role.replace(/teacher/i, "").trim();
+        }
+        return role;
     };
 
+    // ===== Numeric helpers / low-score logic (≤ 50%) =====
+    const toNum = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const getPercent = (g) => {
+        const s = toNum(g?.score);
+        const m = toNum(g?.max_score ?? globalMaxScore);
+        if (s === null || m === null || m <= 0) return null;
+        return (s / m) * 100;
+    };
+
+    const isLowScore = (g) => {
+        const p = getPercent(g);
+        return p !== null && p <= 50; // inclusive at 50%
+    };
+
+    const rowClassFor = (filled, low) => {
+        const base = filled ? "bg-green-50" : "bg-red-50";
+        return low ? `${base} ring-1 ring-rose-300 border-l-4 border-l-rose-500` : base;
+    };
+
+    // ===== Effects =====
     useEffect(() => {
         async function init() {
             try {
@@ -90,7 +136,6 @@ export default function EnterGrades() {
         fetchData();
     }, [selectedClass, selectedTerm, autoSubject]);
 
-    // Reset chosen past assessment whenever scope changes
     useEffect(() => {
         setSelectedPast("");
     }, [selectedClass, selectedTerm, autoSubject]);
@@ -103,26 +148,87 @@ export default function EnterGrades() {
         return () => clearInterval(autoSaveInterval.current);
     }, [saveStatus, grades]);
 
-    const getSubjectFromRole = (role) => {
-        if (!role) return "";
-        if (role.toLowerCase().includes("teacher")) {
-            return role.replace(/teacher/i, "").trim();
-        }
-        return role;
+    // ESC to close modal
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === "Escape") setShowPromptModal(false);
+        };
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, []);
+
+    // ===== Handlers =====
+
+    // Store raw text while typing (no clamping here).
+    const handleGradeChange = (childid, field, rawValue) => {
+        setSaveStatus("Unsaved changes");
+
+        setGrades((prev) => {
+            const current = prev[childid] || {};
+            const next = {
+                ...prev,
+                [childid]: {
+                    ...current,
+                    [field]: rawValue, // store as-is (string) to avoid jumps
+                },
+            };
+
+            // Show a gentle toast once if they dip ≤ 50 while typing (no modal)
+            if (field === "score") {
+                const sNum = toNum(rawValue);
+                const mNum = toNum(current.max_score ?? globalMaxScore);
+                if (sNum !== null && mNum !== null && mNum > 0) {
+                    const pct = (sNum / mNum) * 100;
+                    if (pct <= 50 && !lowPromptShownRef.current.has(childid)) {
+                        lowPromptShownRef.current.add(childid);
+                        showToast("Tip: Add a kind, specific note so parents know the plan 💙");
+                    }
+                }
+            }
+
+            return next;
+        });
     };
 
-    const handleGradeChange = (childid, field, value) => {
-        if (field === "score" || field === "max_score") {
-            if (value !== "" && Number(value) < 0) return;
-        }
-        setSaveStatus("Unsaved changes");
-        setGrades((prev) => ({
-            ...prev,
-            [childid]: {
-                ...prev[childid],
-                [field]: value,
-            },
-        }));
+    // Clamp on blur: Score -> [0, max]
+    const handleScoreBlur = (childid) => {
+        setGrades((prev) => {
+            const current = prev[childid] || {};
+            const s = toNum(current.score);
+            const m = toNum(current.max_score ?? globalMaxScore);
+            if (s === null || m === null || m <= 0) return prev;
+
+            const clamped = Math.max(0, Math.min(s, m));
+            if (clamped !== s) {
+                showToast("Score adjusted to be within 0–Max.");
+            }
+            return {
+                ...prev,
+                [childid]: { ...current, score: String(clamped) },
+            };
+        });
+    };
+
+    // Clamp on blur: Max -> ≥1, and cap score if needed
+    const handleMaxBlur = (childid) => {
+        setGrades((prev) => {
+            const current = prev[childid] || {};
+            let m = toNum(current.max_score ?? globalMaxScore);
+            if (m === null) return prev;
+            m = Math.max(1, m);
+
+            const s = toNum(current.score);
+            let nextScore = current.score;
+            if (s !== null && s > m) {
+                nextScore = String(m);
+                showToast("Score capped to the updated Max.");
+            }
+
+            return {
+                ...prev,
+                [childid]: { ...current, max_score: String(m), score: nextScore },
+            };
+        });
     };
 
     const saveGrades = async () => {
@@ -139,8 +245,15 @@ export default function EnterGrades() {
             return showToast("Please enter score for all students.");
         }
 
+        // Final clean (clamp and normalize) before sending
         const payload = students.map((s) => {
-            const g = grades[s.childid];
+            const g = grades[s.childid] || {};
+            const maxClean = Math.max(1, Number(g.max_score ?? globalMaxScore) || 1);
+            const rawScore = Number(g.score);
+            const scoreClean = Number.isFinite(rawScore)
+                ? Math.max(0, Math.min(rawScore, maxClean))
+                : 0;
+
             return {
                 childid: s.childid,
                 classid: selectedClass,
@@ -148,8 +261,8 @@ export default function EnterGrades() {
                 termid: selectedTerm.termid,
                 assessment_name: g.assessment_name || globalAssessmentName,
                 assessment_label: generateLabel(),
-                score: Number(g.score),
-                max_score: Number(g.max_score || globalMaxScore),
+                score: scoreClean,
+                max_score: maxClean,
                 comment: g.comment || null,
             };
         });
@@ -163,13 +276,12 @@ export default function EnterGrades() {
         }
     };
 
-    // Filter only current term's assessments for the dropdown
+    // ===== Past assessments (current term only) =====
     const currentTermPast = useMemo(
         () => pastAssessments.filter((a) => a.termid === selectedTerm?.termid),
         [pastAssessments, selectedTerm]
     );
 
-    // Load existing rows for a selected past assessment (current term only)
     const loadPastAssessment = async (assessmentName) => {
         if (!assessmentName || !selectedClass || !selectedTerm || !autoSubject) return;
 
@@ -194,10 +306,10 @@ export default function EnterGrades() {
                 };
             });
 
-            // Ensure all students are present (missing ones left blank)
-            students.forEach((s) => {
-                if (!map[s.childid]) {
-                    map[s.childid] = {
+            // Ensure all students are present
+            students.forEach((st) => {
+                if (!map[st.childid]) {
+                    map[st.childid] = {
                         assessment_name: assessmentName,
                         score: "",
                         max_score: globalMaxScore,
@@ -225,19 +337,83 @@ export default function EnterGrades() {
         }
     };
 
+    // ===== Pagination =====
     const filteredStudents = students.filter((s) =>
         `${s.fname} ${s.lname}`.toLowerCase().includes(searchTerm.toLowerCase())
     );
     const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
     const currentStudents = showAll
         ? filteredStudents
-        : filteredStudents.slice((currentPage - 1) * studentsPerPage, currentPage * studentsPerPage);
+        : filteredStudents.slice((currentPage - 1) * studentsPerPage, (currentPage) * studentsPerPage);
 
+    // ===== Render =====
     return (
         <div className="p-6 max-w-5xl mx-auto mt-10 text-gray-800 bg-white shadow rounded">
             {toastMsg && (
                 <div className="fixed top-16 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded shadow z-50">
                     {toastMsg}
+                </div>
+            )}
+
+            {/* Modal: Conversation Help */}
+            {showPromptModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center"
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={() => setShowPromptModal(false)}
+                >
+                    <div className="absolute inset-0 bg-black/40" />
+                    <div
+                        className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl p-6"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-start justify-between mb-3">
+                            <h2 className="text-xl font-bold text-gray-900">Conversation Help</h2>
+                            <button
+                                onClick={() => setShowPromptModal(false)}
+                                className="px-3 py-1 rounded border bg-gray-50 hover:bg-gray-100 text-sm"
+                                aria-label="Close"
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Choose a kind, constructive way to communicate the low score. You can edit it after inserting.
+                        </p>
+
+                        <div className="space-y-3">
+                            {lowScorePrompts.map((prompt, idx) => (
+                                <button
+                                    key={idx}
+                                    onClick={() => {
+                                        setGrades((prev) => {
+                                            const current = prev[selectedStudentId] || {};
+                                            // Replace; change to `${existing} ${prompt}` if you prefer append
+                                            const nextComment = prompt;
+                                            return {
+                                                ...prev,
+                                                [selectedStudentId]: { ...current, comment: nextComment },
+                                            };
+                                        });
+                                        setShowPromptModal(false);
+                                    }}
+                                    className="w-full text-left p-3 rounded-lg border border-gray-300 hover:bg-blue-50 transition"
+                                >
+                                    {prompt}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="mt-6 text-right">
+                            <button
+                                onClick={() => setShowPromptModal(false)}
+                                className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm"
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -292,6 +468,11 @@ export default function EnterGrades() {
                     placeholder="Max Score"
                     value={globalMaxScore}
                     onChange={(e) => setGlobalMaxScore(e.target.value)}
+                    min={1}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    step="1"
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="border px-4 py-2 rounded"
                 />
                 <input
@@ -362,32 +543,58 @@ export default function EnterGrades() {
                         {currentStudents.map((s) => {
                             const g = grades[s.childid] || {};
                             const filled = g.score !== undefined && g.score !== "";
+                            const low = isLowScore(g);
+
                             return (
-                                <tr key={s.childid} className={filled ? "bg-green-50" : "bg-red-50"}>
+                                <tr key={s.childid} className={rowClassFor(filled, low)}>
                                     <td className="px-3 py-2 border">{s.fname} {s.lname}</td>
+
                                     <td className="px-3 py-2 border">
                                         <input
                                             type="number"
-                                            value={g.score || ""}
+                                            value={g.score ?? ""}
                                             onChange={(e) => handleGradeChange(s.childid, "score", e.target.value)}
+                                            onBlur={() => handleScoreBlur(s.childid)}
+                                            min={0}
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            step="1"
+                                            onWheel={(e) => e.currentTarget.blur()} // prevent wheel changing value
                                             className="w-full border px-2 py-1 rounded"
                                         />
                                     </td>
+
                                     <td className="px-3 py-2 border">
                                         <input
                                             type="number"
-                                            value={g.max_score || globalMaxScore || ""}
-                                            onChange={(e) => handleGradeChange(s.childid, "max_score", e.target.value)}
-                                            className="w-full border px-2 py-1 rounded"
+                                            value={globalMaxScore}
+                                            disabled
+                                            className="w-full border px-2 py-1 rounded bg-gray-100 cursor-not-allowed"
                                         />
                                     </td>
-                                    <td className="px-3 py-2 border">
-                                        <input
-                                            type="text"
-                                            value={g.comment || ""}
-                                            onChange={(e) => handleGradeChange(s.childid, "comment", e.target.value)}
-                                            className="w-full border px-2 py-1 rounded"
-                                        />
+                                    <td className="px-3 py-2 border align-top">
+                                        <div className="flex items-start gap-2">
+                                            <textarea
+                                                rows={2}
+                                                value={g.comment || ""}
+                                                onChange={(e) => handleGradeChange(s.childid, "comment", e.target.value)}
+                                                className={`w-full border px-2 py-1 rounded resize-y ${low ? "border-rose-300" : ""}`}
+                                                placeholder={low ? "Add a kind, specific plan…" : ""}
+                                            />
+                                            {low && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedStudentId(s.childid);
+                                                        setShowPromptModal(true);
+                                                    }}
+                                                    className="shrink-0 text-xs px-2 py-1 rounded border bg-blue-600 text-white hover:bg-blue-700"
+                                                    title="Open Conversation Help"
+                                                >
+                                                    💬 Conversation Help
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             );
@@ -412,7 +619,12 @@ export default function EnterGrades() {
 
             <div className="mb-4">
                 <label>
-                    <input type="checkbox" checked={showAll} onChange={() => setShowAll(!showAll)} /> Show all students
+                    <input
+                        type="checkbox"
+                        checked={showAll}
+                        onChange={() => setShowAll(!showAll)}
+                    />{" "}
+                    Show all students
                 </label>
             </div>
 

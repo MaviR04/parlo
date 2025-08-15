@@ -4,25 +4,12 @@ import { useLocation } from "react-router-dom";
 import api from "../axios";
 import TermSelector from "../components/TermSelector";
 
-// --- tiny helpers ---
+/* ───────────────── helpers ───────────────── */
 const roleBadge = (r) =>
   r === "ClassTeacher" ? "bg-blue-100 text-blue-700"
     : r === "SubjectTeacher" ? "bg-purple-100 text-purple-700"
       : r === "Coach" ? "bg-green-100 text-green-700"
         : "bg-gray-100 text-gray-700";
-
-const LabelChip = ({ name, color }) => (
-  <span
-    className="inline-block px-2 py-0.5 text-xs rounded border mr-1"
-    style={{
-      backgroundColor: color ? `${color}20` : "#f3f4f6",
-      borderColor: "#d1d5db",
-      color: "#111827",
-    }}
-  >
-    {name}
-  </span>
-);
 
 function isCurrentTerm(term) {
   if (!term) return false;
@@ -32,31 +19,102 @@ function isCurrentTerm(term) {
   return now >= sd && now <= ed;
 }
 
+/* ───────────────── prompt sets ───────────────── */
+/** Label-specific (exact names from comment_labels.name) */
+const LABEL_PROMPTS = {
+  Praise: [
+    "Great engagement this week — sets a good example.",
+    "Consistently respectful and focused.",
+    "Shared ideas that helped the group."
+  ],
+  Concern: [
+    "Had some trouble with focus — we will try a clear 3‑step plan at school.",
+    "Needed reminders about kindness — we reviewed our class/activity rules.",
+    "Lost focus during group work — we’ll practice staying on task."
+  ],
+  Academic: [
+    "Understands main ideas — next step is applying them independently.",
+    "Needs extra practice on this topic — short home review will help.",
+    "Improving, but still working on accuracy."
+  ],
+  Behaviour: [
+    "We’re focusing on smoother routines — {student} will try one cue this week.",
+    "Let’s keep choices respectful and kind — small steps add up.",
+    "We’ll practice quick reminders to stay on task."
+  ],
+  Attendance: [
+    "Attendance has been irregular — consistency will help routines.",
+    "Late arrivals affect settling time — aiming for on‑time starts.",
+    "Improved attendance this week — let’s keep the routine going."
+  ],
+  Effort: [
+    "Putting in steady effort — we will keep building on this.",
+    "Listens to feedback and keeps trying.",
+    "Showing persistence — good progress ahead."
+  ],
+  Participation: [
+    "Participated actively in group tasks.",
+    "Quieter this week — we’ll encourage more sharing.",
+    "Volunteered to help — confidence growing."
+  ]
+};
+
+/** Always available “safe” prompts */
+const POSITIVE_PROMPTS = [
+  "Great momentum — keep reinforcing these good habits.",
+  "Positive attitude stood out this week.",
+  "Kind and supportive towards peers."
+];
+const GENERAL_PROMPTS = [
+  "Thanks for supporting at home — let’s keep it up.",
+  "One small goal for this week: {goal}.",
+  "We’ll check in on progress next week."
+];
+
+/** Role/context extras */
+const ROLE_PROMPTS = {
+  activities: [
+    "Showed great teamwork during {sport/activity}.",
+    "Needs to stay more consistent during practice.",
+    "Focused well on new techniques this week."
+  ],
+  classTeacher: [
+    "We’ll use simple start‑of‑lesson routines to stay organised.",
+    "Helped peers during transitions — great example.",
+    "We’ll try one cue to support smoother routines."
+  ],
+  subjectTeacher: [
+    "In {subject}, we’ll strengthen {skill} with short practice tasks.",
+    "{student} asked thoughtful questions — next step is applying ideas independently.",
+    "A quick review before tasks will build confidence."
+  ]
+};
+
 export default function GeneralCommentsPage({ currentUser }) {
   const location = useLocation();
 
-  /* ---------- term ---------- */
-  const [selectedTerm, setSelectedTerm] = useState(null); // { termid, name, start_date, end_date }
+  /* ───────── term ───────── */
+  const [selectedTerm, setSelectedTerm] = useState(null);
   const canCompose = isCurrentTerm(selectedTerm);
 
-  /* ---------- bootstrap scope (labels, classes, activities, rosters) ---------- */
+  /* ───────── boot (scope + labels + rosters) ───────── */
   const [boot, setBoot] = useState(null);
   const [loadingBoot, setLoadingBoot] = useState(true);
   const [bootError, setBootError] = useState("");
 
-  /* ---------- labels ---------- */
+  /* ───────── labels ───────── */
   const [labels, setLabels] = useState([]);
   const labelById = useMemo(() => {
     const m = new Map();
-    (labels || []).forEach((l) => m.set(l.label_id, l));
+    (labels || []).forEach((l) => m.set(String(l.label_id), l));
     return m;
   }, [labels]);
 
-  /* ---------- filters / list ---------- */
+  /* ───────── filters/list ───────── */
   const [query, setQuery] = useState("");
   const [filterLabel, setFilterLabel] = useState("");
-  const [filterSource, setFilterSource] = useState(""); // 'ClassTeacher'|'SubjectTeacher'|'Coach'
-  const [mineOnly, setMineOnly] = useState(true); // default show "My comments"
+  const [filterSource, setFilterSource] = useState("");
+  const [mineOnly, setMineOnly] = useState(true);
 
   const [list, setList] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
@@ -64,8 +122,8 @@ export default function GeneralCommentsPage({ currentUser }) {
   const [pageSize, setPageSize] = useState(20);
   const [hasMore, setHasMore] = useState(false);
 
-  /* ---------- composer ---------- */
-  const [labelId, setLabelId] = useState("");
+  /* ───────── composer ───────── */
+  const [labelId, setLabelId] = useState(""); // STRING id
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [visibleToParent, setVisibleToParent] = useState(true);
@@ -75,9 +133,8 @@ export default function GeneralCommentsPage({ currentUser }) {
   const [subjectName, setSubjectName] = useState("");
   const [activityId, setActivityId] = useState("");
 
-  // Student selection (+ filter + suggestions)
+  // Student picker
   const [childId, setChildId] = useState("");
-  //    the useLocation hook, make sure we use correct variable: const path...
   const [childFilter, setChildFilter] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -85,14 +142,14 @@ export default function GeneralCommentsPage({ currentUser }) {
   const isAdmin = currentUser?.userRole === "admin";
   const myUserId = currentUser?.userID || currentUser?.userid || currentUser?.id;
 
-  /* ---------- route hint ---------- */
+  /* ───────── route hint ───────── */
   useEffect(() => {
     const path = location.pathname || "";
     if (path.startsWith("/coach/")) setContextMode("activity");
     else if (path.startsWith("/teacher/")) setContextMode("class");
   }, [location.pathname]);
 
-  /* ---------- load bootstrap (scope + labels + rosters) ---------- */
+  /* ───────── load boot (scope + labels) ───────── */
   useEffect(() => {
     (async () => {
       setLoadingBoot(true);
@@ -100,7 +157,7 @@ export default function GeneralCommentsPage({ currentUser }) {
       try {
         const { data } = await api.get("/general-comments/bootstrap", { withCredentials: true });
         setBoot(data?.scope || null);
-        setLabels(data?.labels || []);
+        setLabels(data?.labels || []); // includes comment_labels with {label_id, name, color}
       } catch (e) {
         console.error(e);
         setBootError(e?.response?.data?.error || "Failed to load your scope.");
@@ -108,33 +165,24 @@ export default function GeneralCommentsPage({ currentUser }) {
         setLoadingBoot(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Clear irrelevant fields when switching context
+  /* ───────── clear fields on context switch ───────── */
   useEffect(() => {
-    if (contextMode === "activity") {
-      setClassId("");
-      setSubjectName("");
-    } else if (contextMode === "subject") {
-      setActivityId("");
-    } else if (contextMode === "class") {
-      setActivityId("");
-      setSubjectName("");
-    }
-    setChildId("");
-    setChildFilter("");
-    setShowSuggestions(false);
+    if (contextMode === "activity") { setClassId(""); setSubjectName(""); }
+    if (contextMode === "subject") { setActivityId(""); }
+    if (contextMode === "class") { setActivityId(""); setSubjectName(""); }
+    setChildId(""); setChildFilter(""); setShowSuggestions(false);
   }, [contextMode]);
 
-  /* ---------- allowed modes (based on scope) ---------- */
+  /* ───────── allowed modes ───────── */
   const allowed = useMemo(() => ({
     class: !!(boot?.classTeacher?.length),
     subject: !!(boot?.subjectTeacher?.length),
     activity: !!(boot?.coach?.length),
   }), [boot]);
 
-  // pick a default allowed mode after boot loads (respect route hint if allowed)
+  /* ───────── default mode ───────── */
   useEffect(() => {
     if (!boot) return;
     const preferRoute =
@@ -144,14 +192,13 @@ export default function GeneralCommentsPage({ currentUser }) {
     const firstAllowed =
       (preferRoute && allowed[preferRoute]) ? preferRoute :
         allowed.activity ? "activity" :
-          allowed.subject ? "subject" :
-            "class";
+          allowed.subject ? "subject" : "class";
 
     setContextMode(firstAllowed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boot]);
 
-  /* ---------- fetch list ---------- */
+  /* ───────── fetch list ───────── */
   async function fetchComments() {
     if (!selectedTerm?.termid) return;
     setLoadingList(true);
@@ -170,25 +217,16 @@ export default function GeneralCommentsPage({ currentUser }) {
       setHasMore((data || []).length === pageSize);
     } catch (e) {
       console.error(e);
-      setList([]);
-      setHasMore(false);
+      setList([]); setHasMore(false);
     } finally {
       setLoadingList(false);
     }
   }
+  useEffect(() => { setPage(1); }, [selectedTerm, query, filterLabel, filterSource, mineOnly, pageSize]);
+  useEffect(() => { fetchComments(); /* eslint-disable-next-line */ }, [selectedTerm, page, pageSize, query, filterLabel, filterSource, mineOnly]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [selectedTerm, query, filterLabel, filterSource, mineOnly, pageSize]);
-
-  useEffect(() => {
-    fetchComments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTerm, page, pageSize, query, filterLabel, filterSource, mineOnly]);
-
-  /* ---------- post comment ---------- */
+  /* ───────── post comment ───────── */
   async function postComment() {
-    // guard modes
     if (contextMode === "activity" && !allowed.activity) return alert("You are not a coach.");
     if (contextMode === "subject" && !allowed.subject) return alert("You are not a subject teacher.");
     if (contextMode === "class" && !allowed.class) return alert("You are not a class teacher.");
@@ -223,9 +261,7 @@ export default function GeneralCommentsPage({ currentUser }) {
 
     try {
       await api.post("/general-comments", payload, { withCredentials: true });
-      setLabelId("");
-      setTitle("");
-      setBody("");
+      setLabelId(""); setTitle(""); setBody("");
       fetchComments();
       alert("Comment posted.");
     } catch (e) {
@@ -234,7 +270,7 @@ export default function GeneralCommentsPage({ currentUser }) {
     }
   }
 
-  /* ---------- list card (with edit/delete) ---------- */
+  /* ───────── list card ───────── */
   const Card = ({ c }) => {
     const [editing, setEditing] = useState(false);
     const [eLabel, setELabel] = useState(c.label_id || "");
@@ -245,8 +281,7 @@ export default function GeneralCommentsPage({ currentUser }) {
     const [deleting, setDeleting] = useState(false);
 
     const canEdit = isAdmin || (myUserId && Number(myUserId) === Number(c.author_userid));
-
-    const label = c.label_id ? labelById.get(c.label_id) : null;
+    const label = c.label_id ? labelById.get(String(c.label_id)) : null;
     const who = `${c.author_fname || ""} ${c.author_lname || ""}`.trim();
     const whereBits = [];
     if (c.classname) whereBits.push(`Class: ${c.classname}`);
@@ -287,28 +322,6 @@ export default function GeneralCommentsPage({ currentUser }) {
       }
     }
 
-    // --- tiny helpers ---
-    const roleBadge = (r) =>
-      r === "ClassTeacher"
-        ? "bg-blue-100 text-blue-700 border border-blue-200 font-medium"
-        : r === "SubjectTeacher"
-          ? "bg-purple-100 text-purple-700 border border-purple-200 font-medium"
-          : r === "Coach"
-            ? "bg-green-100 text-green-700 border border-green-200 font-medium"
-            : "bg-gray-100 text-gray-700 border border-gray-300 font-medium";
-
-    const LabelChip = ({ name, color }) => (
-      <span
-        className="inline-block px-2 py-0.5 text-xs rounded border mr-1 font-medium"
-        style={{
-          backgroundColor: color ? `${color}15` : "#f3f4f6",
-          borderColor: color || "#d1d5db",
-          color: color || "#111827",
-        }}
-      >
-        {name}
-      </span>
-    );
     return (
       <div className="border rounded-lg p-4 mb-3 shadow-sm hover:shadow-md transition-shadow bg-white">
         <div className="flex items-center justify-between gap-2">
@@ -325,7 +338,14 @@ export default function GeneralCommentsPage({ currentUser }) {
                 Staff only
               </span>
             )}
-            {label && <LabelChip name={label.name} color={label.color} />}
+            {label && (
+              <span
+                className="inline-block px-2 py-0.5 text-xs rounded border mr-1"
+                style={{ backgroundColor: `${(label.color || "gray")}15`, borderColor: "#d1d5db" }}
+              >
+                {label.name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="text-xs text-gray-500">{new Date(c.created_at).toLocaleString()}</div>
@@ -365,7 +385,6 @@ export default function GeneralCommentsPage({ currentUser }) {
             <div className="mt-2 whitespace-pre-wrap leading-relaxed">{c.body}</div>
           </div>
         ) : (
-          // ✏️ Edit mode styling
           <div className="mt-3 border-t pt-3 space-y-2">
             <label className="block text-sm font-medium">Label</label>
             <select
@@ -375,7 +394,7 @@ export default function GeneralCommentsPage({ currentUser }) {
             >
               <option value="">(none)</option>
               {labels.map((l) => (
-                <option key={l.label_id} value={l.label_id}>{l.name}</option>
+                <option key={l.label_id} value={String(l.label_id)}>{l.name}</option>
               ))}
             </select>
 
@@ -426,24 +445,18 @@ export default function GeneralCommentsPage({ currentUser }) {
     );
   };
 
-  /* ---------- current roster & suggestions ---------- */
+  /* ───────── roster & suggestions ───────── */
   const roster = useMemo(() => {
     if (!boot) return [];
-    if (contextMode === "activity" && activityId) {
-      return boot.childrenByActivity?.[activityId] || [];
-    }
-    if ((contextMode === "class" || contextMode === "subject") && classId) {
-      return boot.childrenByClass?.[classId] || [];
-    }
+    if (contextMode === "activity" && activityId) return boot.childrenByActivity?.[activityId] || [];
+    if ((contextMode === "class" || contextMode === "subject") && classId) return boot.childrenByClass?.[classId] || [];
     return [];
   }, [boot, contextMode, classId, activityId]);
 
   const filteredRoster = useMemo(() => {
     const term = (childFilter || "").toLowerCase();
     if (!term) return roster;
-    return roster.filter((ch) =>
-      (`${ch.fname} ${ch.lname}`).toLowerCase().includes(term)
-    );
+    return roster.filter((ch) => (`${ch.fname} ${ch.lname}`).toLowerCase().includes(term));
   }, [roster, childFilter]);
 
   const suggestions = useMemo(() => filteredRoster.slice(0, 8), [filteredRoster]);
@@ -454,11 +467,105 @@ export default function GeneralCommentsPage({ currentUser }) {
     setShowSuggestions(false);
   }
 
+  /* ───────── prompt help (label + role aware) ───────── */
+  const [promptOpen, setPromptOpen] = useState(false);
+
+  const selectedLabelName = (labelId && labelById.get(String(labelId))?.name) || "";
+
+  function getRoleExtras() {
+    if (contextMode === "activity") return ROLE_PROMPTS.activities;
+    if (contextMode === "class") return ROLE_PROMPTS.classTeacher;
+    if (contextMode === "subject") return ROLE_PROMPTS.subjectTeacher;
+    return [];
+  }
+
+  function getPromptsForUI() {
+    // If a label is selected and we have a set for it → show those first.
+    const main = selectedLabelName && LABEL_PROMPTS[selectedLabelName]
+      ? LABEL_PROMPTS[selectedLabelName]
+      : [];
+
+    // Always available supportive ones (kept short)
+    const base = [...POSITIVE_PROMPTS, ...GENERAL_PROMPTS];
+
+    // Role/context extras
+    const role = getRoleExtras();
+
+    // If a label is selected, we show: Label set + Role extras (if any).
+    // If NO label is selected, we show: Positive/General + Role extras.
+    if (main.length) return {
+      groups: [
+        { title: selectedLabelName, items: main },
+        role.length ? { title: "Context", items: role } : null,
+      ].filter(Boolean)
+    };
+
+    return {
+      groups: [
+        { title: "Suggestions", items: base },
+        role.length ? { title: "Context", items: role } : null,
+      ].filter(Boolean)
+    };
+  }
+
+  /* ───────── render ───────── */
   return (
     <div className="max-w-[1100px] mx-auto p-4 md:p-6 bg-white mt-6 rounded-2xl shadow text-gray-900">
+      {/* Prompt Help Modal */}
+      {promptOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPromptOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-900">Prompt Help</h2>
+              <button
+                onClick={() => setPromptOpen(false)}
+                className="px-3 py-1 rounded border bg-gray-50 hover:bg-gray-100 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-600 mb-3">
+              Label: <b>{selectedLabelName || "None"}</b>
+              {contextMode === "activity" && <> • <b>Activity</b></>}
+              {contextMode === "class" && <> • <b>Class Teacher</b></>}
+              {contextMode === "subject" && <> • <b>Subject Teacher</b></>}
+            </div>
+
+            {getPromptsForUI().groups.map((grp, idx) => (
+              <div key={idx} className={idx > 0 ? "mt-3" : ""}>
+                <div className="text-sm font-semibold text-gray-700 mb-1">{grp.title}</div>
+                <div className="space-y-2 max-h-80 overflow-auto pr-1">
+                  {grp.items.map((s, i) => (
+                    <button
+                      key={`${idx}-${i}`}
+                      onClick={() => {
+                        setBody((prev) => (prev ? `${prev.trim()} ${s}` : s));
+                        setPromptOpen(false);
+                      }}
+                      className="w-full text-left p-3 rounded-lg border border-gray-300 hover:bg-blue-50 transition text-sm"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl md:text-2xl font-bold">📝 General Comments</h2>
-
       </div>
 
       {/* Term selector */}
@@ -472,12 +579,8 @@ export default function GeneralCommentsPage({ currentUser }) {
       )}
 
       {/* Scope load status */}
-      {loadingBoot && (
-        <div className="text-sm text-gray-500 mt-2">Loading your classes/activities…</div>
-      )}
-      {bootError && (
-        <div className="text-sm text-red-600 mt-2">{bootError}</div>
-      )}
+      {loadingBoot && <div className="text-sm text-gray-500 mt-2">Loading your classes/activities…</div>}
+      {bootError && <div className="text-sm text-red-600 mt-2">{bootError}</div>}
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-3 mt-3">
@@ -533,12 +636,12 @@ export default function GeneralCommentsPage({ currentUser }) {
 
       {/* Layout: composer + list */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Composer (disabled when !canCompose) */}
+        {/* Composer */}
         <div className={`border rounded-xl p-3 ${!canCompose ? "opacity-60 pointer-events-none" : ""}`}>
           <div className="font-semibold mb-2">Add a comment</div>
 
           <div className="grid grid-cols-1 gap-3">
-            {/* Context mode toggle */}
+            {/* Context toggle */}
             <div>
               <label className="block text-sm font-medium mb-1">Context</label>
               <div className="flex gap-2 mb-2">
@@ -546,8 +649,7 @@ export default function GeneralCommentsPage({ currentUser }) {
                   type="button"
                   disabled={!allowed.class}
                   onClick={() => allowed.class && setContextMode("class")}
-                  className={`px-2 py-1 rounded border ${contextMode === "class" ? "bg-blue-600 text-white" : "bg-gray-100"
-                    } ${!allowed.class ? "opacity-50 cursor-not-allowed" : ""}`}
+                  className={`px-2 py-1 rounded border ${contextMode === "class" ? "bg-blue-600 text-white" : "bg-gray-100"} ${!allowed.class ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   Class Teacher
                 </button>
@@ -555,8 +657,7 @@ export default function GeneralCommentsPage({ currentUser }) {
                   type="button"
                   disabled={!allowed.subject}
                   onClick={() => allowed.subject && setContextMode("subject")}
-                  className={`px-2 py-1 rounded border ${contextMode === "subject" ? "bg-blue-600 text-white" : "bg-gray-100"
-                    } ${!allowed.subject ? "opacity-50 cursor-not-allowed" : ""}`}
+                  className={`px-2 py-1 rounded border ${contextMode === "subject" ? "bg-blue-600 text-white" : "bg-gray-100"} ${!allowed.subject ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   Subject Teacher
                 </button>
@@ -564,8 +665,7 @@ export default function GeneralCommentsPage({ currentUser }) {
                   type="button"
                   disabled={!allowed.activity}
                   onClick={() => allowed.activity && setContextMode("activity")}
-                  className={`px-2 py-1 rounded border ${contextMode === "activity" ? "bg-blue-600 text-white" : "bg-gray-100"
-                    } ${!allowed.activity ? "opacity-50 cursor-not-allowed" : ""}`}
+                  className={`px-2 py-1 rounded border ${contextMode === "activity" ? "bg-blue-600 text-white" : "bg-gray-100"} ${!allowed.activity ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   Coach
                 </button>
@@ -661,7 +761,7 @@ export default function GeneralCommentsPage({ currentUser }) {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => onPickStudent(ch)}
                       >
-                        {ch.lname}, {ch.fname} <span className="text-gray-500">#{ch.childid}</span>
+                        {ch.fname} {ch.lname} <span className="text-gray-500">#{ch.childid}</span>
                       </button>
                     ))}
                   </div>
@@ -680,7 +780,7 @@ export default function GeneralCommentsPage({ currentUser }) {
                 <option value="">Select a student…</option>
                 {filteredRoster.map((ch) => (
                   <option key={ch.childid} value={ch.childid}>
-                    {ch.lname}, {ch.fname} (#{ch.childid})
+                    {ch.fname} {ch.lname} (#{ch.childid})
                   </option>
                 ))}
               </select>
@@ -692,11 +792,11 @@ export default function GeneralCommentsPage({ currentUser }) {
               <select
                 className="border rounded px-3 py-2 w-full"
                 value={labelId}
-                onChange={(e) => setLabelId(e.target.value)}
+                onChange={(e) => setLabelId(e.target.value || "")}
               >
                 <option value="">(optional)</option>
                 {labels.map((l) => (
-                  <option key={l.label_id} value={l.label_id}>{l.name}</option>
+                  <option key={l.label_id} value={String(l.label_id)}>{l.name}</option>
                 ))}
               </select>
             </div>
@@ -713,9 +813,23 @@ export default function GeneralCommentsPage({ currentUser }) {
               />
             </div>
 
-            {/* Body */}
+            {/* Body + Prompt Help */}
             <div>
-              <label className="block text-sm font-medium mb-1">Comment</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium mb-1">Comment</label>
+                <button
+                  type="button"
+                  className="text-xs px-2 py-1 rounded border bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={() => setPromptOpen(true)}
+                  disabled={
+                    (contextMode === "activity" && !activityId) ||
+                    ((contextMode === "class" || contextMode === "subject") && !classId)
+                  }
+                  title="Open prompt suggestions"
+                >
+                  Prompt Help
+                </button>
+              </div>
               <textarea
                 className="border rounded px-3 py-2 w-full"
                 rows={4}
@@ -748,11 +862,7 @@ export default function GeneralCommentsPage({ currentUser }) {
               <button
                 type="button"
                 className="border px-4 py-2 rounded"
-                onClick={() => {
-                  setLabelId("");
-                  setTitle("");
-                  setBody("");
-                }}
+                onClick={() => { setLabelId(""); setTitle(""); setBody(""); }}
               >
                 Clear
               </button>
@@ -782,37 +892,14 @@ export default function GeneralCommentsPage({ currentUser }) {
               {(page - 1) * pageSize + list.length}
             </div>
             <div className="flex items-center gap-1">
-              <button
-                className="px-2 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage(1)}
-                disabled={page <= 1}
-                title="First"
-              >
-                «
-              </button>
-              <button
-                className="px-2 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                title="Prev"
-              >
-                ‹
-              </button>
+              <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage(1)} disabled={page <= 1} title="First">«</button>
+              <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} title="Prev">‹</button>
               <span className="px-2">Page {page}</span>
-              <button
-                className="px-2 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => p + 1)}
-                disabled={!hasMore}
-                title="Next"
-              >
-                ›
-              </button>
+              <button className="px-2 py-1 border rounded disabled:opacity-50" onClick={() => setPage((p) => p + 1)} disabled={!hasMore} title="Next">›</button>
             </div>
           </div>
         </div>
       </div>
-
-
     </div>
   );
 }
