@@ -186,35 +186,35 @@ export default function BehaviourResults({ childId, termId }) {
       metric === "focus"
         ? filteredWeeks.map((w) => w.focus)
         : metric === "respect"
-        ? filteredWeeks.map((w) => w.respect)
-        : metric === "self"
-        ? filteredWeeks.map((w) => w.self)
-        : filteredWeeks.map((w) => w.overall);
+          ? filteredWeeks.map((w) => w.respect)
+          : metric === "self"
+            ? filteredWeeks.map((w) => w.self)
+            : filteredWeeks.map((w) => w.overall);
 
     const labelSuffix =
       source === "all"
         ? " (All ratings)"
         : source === "class"
-        ? " (Class teacher)"
-        : " (Subject teachers)";
+          ? " (Class teacher)"
+          : " (Subject teachers)";
 
     const labelPrefix =
       metric === "focus"
         ? "Focus & Engagement"
         : metric === "respect"
-        ? "Respect & Kindness"
-        : metric === "self"
-        ? "Self-Management"
-        : "Overall";
+          ? "Respect & Kindness"
+          : metric === "self"
+            ? "Self-Management"
+            : "Overall";
 
     const color =
       metric === "focus"
         ? "green"
         : metric === "respect"
-        ? "orange"
-        : metric === "self"
-        ? "purple"
-        : "blue";
+          ? "orange"
+          : metric === "self"
+            ? "purple"
+            : "blue";
 
     return {
       labels,
@@ -257,15 +257,14 @@ export default function BehaviourResults({ childId, termId }) {
             <button
               key={s}
               onClick={() => setSource(s)}
-              className={`px-3 py-1 text-sm ${
-                source === s ? "bg-blue-600 text-white" : "bg-gray-50"
-              }`}
+              className={`px-3 py-1 text-sm ${source === s ? "bg-blue-600 text-white" : "bg-gray-50"
+                }`}
               title={
                 s === "all"
                   ? "Show class teacher + all subject teachers"
                   : s === "class"
-                  ? "Only the class teacher’s ratings"
-                  : "Only subject teachers’ ratings"
+                    ? "Only the class teacher’s ratings"
+                    : "Only subject teachers’ ratings"
               }
             >
               {s === "all" ? "All ratings" : s === "class" ? "Class teacher" : "Subject teachers"}
@@ -331,17 +330,16 @@ export default function BehaviourResults({ childId, termId }) {
           <button
             key={key}
             onClick={() => setMetric(key)}
-            className={`px-3 py-1 rounded border ${
-              metric === key ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
-            }`}
+            className={`px-3 py-1 rounded border ${metric === key ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
+              }`}
           >
             {key === "overall"
               ? "Overall"
               : key === "focus"
-              ? "Focus & Engagement"
-              : key === "respect"
-              ? "Respect & Kindness"
-              : "Self-Management"}
+                ? "Focus & Engagement"
+                : key === "respect"
+                  ? "Respect & Kindness"
+                  : "Self-Management"}
           </button>
         ))}
       </div>
