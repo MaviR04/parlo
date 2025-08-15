@@ -3,14 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../axios";
 import TermSelector from "../components/TermSelector";
 import {
-    LineChart,
-    Line,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 
 export default function BehaviourOverview() {
@@ -24,10 +17,10 @@ export default function BehaviourOverview() {
     const [selectedTerm, setSelectedTerm] = useState(null);
 
     // Week dropdown
-    const [availableWeeks, setAvailableWeeks] = useState([]);
+    const [availableWeeks, setAvailableWeeks] = useState([]); // ["YYYY-MM-DD", ...]
     const [selectedWeek, setSelectedWeek] = useState("");
 
-    // Server filter for overview rows: all | class | subject
+    // Server scope for the table: all | class | subject (enforced backend-side by role)
     const [source, setSource] = useState("subject"); // safe default
 
     // Client filters (table + chart)
@@ -51,31 +44,33 @@ export default function BehaviourOverview() {
     const [chartLoading, setChartLoading] = useState(false);
     const [studentMetric, setStudentMetric] = useState("all"); // all | overall | focus | respect | self
 
-    /* ---------------- utils: dates ---------------- */
+    /* ---------------- date helpers ---------------- */
     const parseYMD = (ymd) => {
         const val = String(ymd).slice(0, 10);
         const [yy, mm, dd] = val.split("-");
-        return new Date(Number(yy), Number(mm) - 1, Number(dd));
+        return new Date(Number(yy), Number(mm) - 1, Number(dd)); // local date, no TZ shift
     };
-    const getYMD = (v) => {
-        if (!v) return "";
-        if (typeof v === "string") {
-            const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
-            if (m) return m[1];
-        }
-        const d = v instanceof Date ? v : new Date(v);
-        if (Number.isNaN(d.getTime())) return "";
-        const y = d.getUTCFullYear();
-        const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-        const dd = String(d.getUTCDate()).padStart(2, "0");
-        return `${y}-${m}-${dd}`;
+    const toYMD = (v) => {
+        if (!v) return null;
+        const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+        if (m) return m[1];
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
     };
-    const formatWeekLabel = (v) => {
-        const ymd = getYMD(v);
-        if (!ymd) return "";
-        const [yy, mm, dd] = ymd.split("-");
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        return `Week of ${Number(dd)} ${months[Number(mm) - 1]} ${yy}`;
+    const ensureWeekKey = (row) => ({
+        ...row,
+        week_ymd: toYMD(row.week_ymd || row.week_start_date || row.week),
+    });
+    const fmtTick = (ymd, withYear = false) => {
+        const s = toYMD(ymd);
+        if (!s) return "";
+        const [yy, mm, dd] = s.split("-");
+        const d = new Date(Number(yy), Number(mm) - 1, Number(dd));
+        return `Week of ${d.toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            ...(withYear ? { year: "numeric" } : {}),
+        })}`;
     };
 
     /* ---------------- boot: classes + class-teacher classes ---------------- */
@@ -136,7 +131,7 @@ export default function BehaviourOverview() {
         setStudentMetric("all");
     }, [selectedClass, classTeacherClassIds]);
 
-    /* ---------------- load overview rows ---------------- */
+    /* ---------------- load overview rows for selected week ---------------- */
     useEffect(() => {
         if (!selectedClass || !selectedTerm || !selectedWeek) {
             setRowsRaw([]);
@@ -154,7 +149,7 @@ export default function BehaviourOverview() {
                 setCurrentPage(1);
                 setExpanded({});
 
-                // subject teacher => lock teacher filter to themselves
+                // Subject teacher → lock teacher filter to themselves (only one name expected)
                 if (!isClassTeacherForSelected) {
                     const teachers = new Set();
                     rows.forEach((r) => (r.entries || []).forEach((e) => teachers.add(e.teacher_name)));
@@ -181,7 +176,49 @@ export default function BehaviourOverview() {
         return null;
     }, [teacherFilter, rowsRaw]);
 
-    /* ---------------- chart data fetch (respects filters) ---------------- */
+    /* ---------------- derive class vs subject teachers (from rows) ---------------- */
+    const teacherGroups = useMemo(() => {
+        const classTeachers = new Set();
+        const subjectTeachers = new Set();
+        rowsRaw.forEach((r) =>
+            (r.entries || []).forEach((e, idx) => {
+                // Class Teacher if the subject/role contains "class teacher"
+                const role = (e.subject_name || "").toLowerCase();
+                if (role.includes("class teacher")) classTeachers.add(e.teacher_name);
+                else subjectTeachers.add(e.teacher_name);
+            })
+        );
+        return {
+            classTeachers: Array.from(classTeachers),
+            subjectTeachers: Array.from(subjectTeachers),
+        };
+    }, [rowsRaw]);
+
+    /* ---------------- AUTO-SELECT filters when switching the top toggle ---------------- */
+    useEffect(() => {
+        if (!isClassTeacherForSelected) return; // subject teachers stay locked to themselves
+
+        if (source === "all") {
+            if (teacherFilter !== "all") setTeacherFilter("all");
+            if (subjectFilter !== "all") setSubjectFilter("all");
+            return;
+        }
+
+        if (source === "class") {
+            const ct = teacherGroups.classTeachers[0] || teacherGroups.subjectTeachers[0] || "all";
+            if (teacherFilter !== ct) setTeacherFilter(ct);
+            if (subjectFilter !== "all") setSubjectFilter("all");
+            return;
+        }
+
+        if (source === "subject") {
+            const st = teacherGroups.subjectTeachers[0] || teacherGroups.classTeachers[0] || "all";
+            if (teacherFilter !== st) setTeacherFilter(st);
+            if (subjectFilter !== "all") setSubjectFilter("all");
+        }
+    }, [source, teacherGroups, isClassTeacherForSelected]); // runs again after rows load
+
+    /* ---------------- chart data (respects teacher/subject) ---------------- */
     useEffect(() => {
         async function fetchChart() {
             if (!selectedClass || !selectedTerm) return;
@@ -192,63 +229,27 @@ export default function BehaviourOverview() {
                         student_id: String(selectedStudent.childid),
                         term_id: String(selectedTerm.termid),
                         class_id: String(selectedClass.classid),
-                        source,
                     });
-
                     if (isClassTeacherForSelected) {
-                        // teacher filter → id
-                        let tId = null;
-                        if (teacherFilter !== "all") {
-                            for (const r of rowsRaw) {
-                                for (const e of r.entries || []) {
-                                    if (e.teacher_name === teacherFilter) { tId = e.teacher_id || null; break; }
-                                }
-                                if (tId) break;
-                            }
-                        }
-                        if (tId) params.append("teacher_id", String(tId));
+                        if (selectedTeacherId) params.append("teacher_id", String(selectedTeacherId));
                         if (subjectFilter !== "all") params.append("subject", subjectFilter);
                     }
-
                     const res = await api.get(`/behaviour/student-trend?${params.toString()}`);
-
-                    // ✅ normalise: add week_ymd and struggling flag
-                    const processed = (res.data || []).map(r => ({
-                        ...r,
-                        week_ymd: String(r.week_start_date).slice(0, 10),
-                        struggling: Number(r.overall_avg) < 2.0,
-                    }));
+                    const processed = (res.data || [])
+                        .map(ensureWeekKey)
+                        .map((r) => ({ ...r, struggling: Number(r.overall_avg) < 2.0 }));
                     setChartData(processed);
-
                 } else {
                     const params = new URLSearchParams({
                         class_id: String(selectedClass.classid),
                         term_id: String(selectedTerm.termid),
-                        source,
                     });
-
                     if (isClassTeacherForSelected) {
-                        let tId = null;
-                        if (teacherFilter !== "all") {
-                            for (const r of rowsRaw) {
-                                for (const e of r.entries || []) {
-                                    if (e.teacher_name === teacherFilter) { tId = e.teacher_id || null; break; }
-                                }
-                                if (tId) break;
-                            }
-                        }
-                        if (tId) params.append("teacher_id", String(tId));
+                        if (selectedTeacherId) params.append("teacher_id", String(selectedTeacherId));
                         if (subjectFilter !== "all") params.append("subject", subjectFilter);
                     }
-
                     const res = await api.get(`/behaviour/class-trend?${params.toString()}`);
-
-                    // Backend usually returns week_ymd already, but normalise just in case
-                    const processed = (res.data || []).map(r => ({
-                        ...r,
-                        week_ymd: String(r.week_ymd || r.week_start_date).slice(0, 10),
-                    }));
-                    setChartData(processed);
+                    setChartData((res.data || []).map(ensureWeekKey));
                 }
             } finally {
                 setChartLoading(false);
@@ -256,12 +257,13 @@ export default function BehaviourOverview() {
         }
         fetchChart();
     }, [
-        selectedClass, selectedTerm, selectedStudent,
-        source, teacherFilter, subjectFilter,
-        isClassTeacherForSelected, rowsRaw
+        selectedClass,
+        selectedTerm,
+        selectedStudent,
+        selectedTeacherId,
+        subjectFilter,
+        isClassTeacherForSelected,
     ]);
-
-
 
     /* ---------------- facets ---------------- */
     const allTeachers = useMemo(() => {
@@ -401,7 +403,8 @@ export default function BehaviourOverview() {
         <div className="p-4 bg-white shadow rounded-lg">
             <h2 className="text-lg font-bold mb-2">Behaviour Overview</h2>
             <p className="text-sm text-gray-600 mb-4">
-                <strong>Tip:</strong> Click a student’s <u>name</u> to switch the chart to their weekly trend. The chart follows the teacher/subject filters below (for class teachers).
+                <strong>Tip:</strong> Click a student’s <u>name</u> to switch the chart to their weekly trend.
+                The chart follows the teacher/subject filters below (for class teachers).
             </p>
 
             {/* Top row: Term / Class / Week */}
@@ -469,7 +472,8 @@ export default function BehaviourOverview() {
                             <button
                                 key={s}
                                 onClick={() => setSource(s)}
-                                className={`px-3 py-2 text-sm ${source === s ? "bg-blue-600 text-white" : "bg-white"}`}
+                                className={`px-3 py-2 text-sm ${source === s ? "bg-blue-600 text-white" : "bg-white"
+                                    }`}
                             >
                                 {s === "all" ? "All ratings" : s === "class" ? "Class teacher" : "Subject teachers"}
                             </button>
@@ -587,8 +591,8 @@ export default function BehaviourOverview() {
                                         <td className="px-3 py-2 border whitespace-nowrap">
                                             <button
                                                 className={`underline decoration-dotted hover:decoration-solid ${selectedStudent?.childid === r.childid
-                                                    ? "text-blue-700 font-semibold"
-                                                    : "text-blue-600"
+                                                        ? "text-blue-700 font-semibold"
+                                                        : "text-blue-600"
                                                     }`}
                                                 onClick={() => {
                                                     setSelectedStudent(
@@ -619,7 +623,9 @@ export default function BehaviourOverview() {
                                         <td className="px-3 py-2 border text-center">{r.raters}</td>
                                         <td className="px-3 py-2 border text-center">
                                             <button
-                                                onClick={() => setExpanded((p) => ({ ...p, [r.childid]: !p[r.childid] }))}
+                                                onClick={() =>
+                                                    setExpanded((p) => ({ ...p, [r.childid]: !p[r.childid] }))
+                                                }
                                                 className="px-3 py-1 rounded border bg-blue-600 text-white hover:bg-blue-700 text-xs"
                                             >
                                                 {expanded[r.childid] ? "Hide" : `Show (${r.entries.length})`}
@@ -713,19 +719,10 @@ export default function BehaviourOverview() {
                                 allowDuplicatedCategory={false}
                                 interval="preserveStartEnd"
                                 minTickGap={0}
-                                tickFormatter={(ymd) => {
-                                    const [yy, mm, dd] = String(ymd).slice(0, 10).split("-");
-                                    const d = new Date(Number(yy), Number(mm) - 1, Number(dd)); // local date (no TZ shift)
-                                    return `Week of ${d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
-                                }}
+                                tickFormatter={(ymd) => fmtTick(ymd)}
                             />
-                            <Tooltip
-                                labelFormatter={(ymd) => {
-                                    const [yy, mm, dd] = String(ymd).slice(0, 10).split("-");
-                                    const d = new Date(Number(yy), Number(mm) - 1, Number(dd));
-                                    return `Week of ${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
-                                }}
-                            />
+                            <YAxis domain={[0, 3]} />
+                            <Tooltip labelFormatter={(ymd) => fmtTick(ymd, true)} />
                             <Legend />
 
                             {/* Class view (single line) */}
@@ -748,8 +745,7 @@ export default function BehaviourOverview() {
                                     stroke="#8884d8"
                                     name="Overall Avg"
                                     strokeWidth={2}
-                                    dot={(props) => {
-                                        const { cx, cy, payload, index } = props;
+                                    dot={({ cx, cy, payload, index }) => {
                                         const key = `dot-${index}-${payload?.week_ymd || ""}`;
                                         if (payload?.struggling) {
                                             return (
