@@ -27,7 +27,7 @@ const colorForRating = (r) => {
 };
 
 const RATING_BUCKETS = [
-    { key: "8-9", label: "8–9", test: (r) => Number.isFinite(r) && r >= 8 },
+    { key: "8-9", label: "8–10", test: (r) => Number.isFinite(r) && r >= 8 },
     { key: "6-7", label: "6–7", test: (r) => Number.isFinite(r) && r >= 6 && r <= 7 },
     { key: "5", label: "5", test: (r) => Number.isFinite(r) && r === 5 },
     { key: "3-4", label: "3–4", test: (r) => Number.isFinite(r) && r >= 3 && r <= 4 },
