@@ -80,7 +80,7 @@ export default function CoachLogPage() {
     }, [selectedActivity]);
 
     const handleChange = (childID, field, value) => {
-        if (field === "rating" && value && (Number(value) < 1 || Number(value) > 9)) return;
+        if (field === "rating" && value && (Number(value) < 1 || Number(value) > 10)) return;
         setLogs((prev) => ({
             ...prev,
             [childID]: {
@@ -238,7 +238,7 @@ export default function CoachLogPage() {
                                                 <input
                                                     type="number"
                                                     min="1"
-                                                    max="9"
+                                                    max="10"
                                                     className="w-20 border px-2 py-1 rounded"
                                                     value={entry.rating || ""}
                                                     onChange={(e) => handleChange(s.childid, "rating", e.target.value)}

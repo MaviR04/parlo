@@ -25,9 +25,9 @@ export default function Login({ setUser }) {
         });
 
         if (res.data.userRole === "Admin") navigate("/admin");
-        else if (res.data.userRole === "Teacher") navigate("/teacher");
+        else if (res.data.userRole === "Teacher") navigate("/teacher-dashboard");
         else if (res.data.userRole === "Coach") navigate("/coach-dashboard");
-        else if (res.data.userRole === "Parent") navigate("/calendar");
+        else if (res.data.userRole === "Parent") navigate("/parent-dashboard");
         else navigate("/");
       } else {
         setError("Invalid email or password.");

@@ -61,9 +61,6 @@ function Navbar({ user, setUser }) {
                 <Link to="/coach-dashboard" className="hover:text-blue-300">
                   Coach Dashboard
                 </Link>
-                <Link to="/coach-calendar" className="hover:text-blue-300">
-                  Coach Calendar
-                </Link>
               </>
             )}
 

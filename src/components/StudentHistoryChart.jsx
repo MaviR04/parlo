@@ -171,7 +171,7 @@ export default function StudentHistoryChart({
             },
             y: {
                 min: 1,
-                max: 9,
+                max: 10,
                 ticks: { stepSize: 1, precision: 0 },
             },
         },

@@ -21,19 +21,23 @@ import activitiesRouter from "./routers/activities.js";
 import commentsRouter from "./routers/p-comments.js";
 import pBehaviourRouter from "./routers/p-behaviour.js";
 import parentRoutes from "./routers/parent.js";
-
+import dotenv from 'dotenv';
+dotenv.config();
 
 
 const app = express();
 const connectedUsers = [];
 
-// Serve static files from the Vite dist folder
-//app.use(express.static(path.resolve('client/dist')))
+if(process.env.ENV == "prod"){
+  // Serve static files from the Vite dist folder
+  app.use(express.static(path.resolve('client/dist')))
 
 // Catch-all for client-side routing
-/*app.get('/*splat', (req, res) => {
-  res.sendFile(path.resolve('client/dist/index.html'))
-}) */
+  app.get('/*splat', (req, res) => {
+    res.sendFile(path.resolve('client/dist/index.html'))
+  }) 
+}
+
 
 
 app.use(cors({
