@@ -184,7 +184,7 @@ useEffect(() => {
          <div className='bg-white rounded-2xl w-7/8 h-8 shadow-md mb-2 flex items-center gap-2'>
           <div className={(viewRead ? "bg-primary text-white" : "" )+ ' badge badge-outline badge-primary ml-3 cursor-pointer rounded-2xl hover:bg-primary hover:text-white transition'}
             onClick={() => setViewRead(v => !v)}
-          >Read</div>
+          >Show read announcements</div>
           {subjectsTeachers.map(s => (
             <div key={s.id} className={(filtered.id == s.id && filtered.active ? "badge badge-primary rounded-2xl cursor-pointer border-0" : "badge badge-soft rounded-2xl cursor-pointer opacity-50 border-0" )+ " hover:opacity-100 transition " + classColorMap[parseInt(s.id)]} 
                 onClick={(e)=>{
