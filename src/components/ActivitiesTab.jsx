@@ -19,12 +19,11 @@ export default function ActivitiesTab({ childId, termId }) {
     const [loadingProgress, setLoadingProgress] = useState(false);
     const [loadingWeekly, setLoadingWeekly] = useState(false);
 
-
     // Badges data
     const [badgesData, setBadgesData] = useState({});
     const [loadingBadges, setLoadingBadges] = useState(false);
 
-    // State for logs tab
+    // Logs
     const [logsData, setLogsData] = useState([]);
     const [loadingLogs, setLoadingLogs] = useState(false);
 
@@ -33,20 +32,19 @@ export default function ActivitiesTab({ childId, termId }) {
     const [activitiesList, setActivitiesList] = useState([]);
     const [tagsList, setTagsList] = useState([]);
 
-
-    // Dynamic chips from categories we discover at runtime
-    const [allTags, setAllTags] = useState([]);           // from /activities/tags
-    const [tagCategories, setTagCategories] = useState([]); // ["Achievement","Encouragement",...]
-    const [categoryColor, setCategoryColor] = useState({}); // { "Achievement": "#..."} (representative)
-    const [selectedCategory, setSelectedCategory] = useState(""); // dynamic chip
+    // Dynamic chips
+    const [allTags, setAllTags] = useState([]);
+    const [tagCategories, setTagCategories] = useState([]);
+    const [categoryColor, setCategoryColor] = useState({});
+    const [selectedCategory, setSelectedCategory] = useState("");
 
     // Date preset + search
-    const [datePreset, setDatePreset] = useState("This term"); // "This week" | "This month" | "This term"
+    const [datePreset, setDatePreset] = useState("This term");
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const logsPerPage = 10;
 
-    // Date helpers
+    // ----- helpers -----
     const startOfWeekMon = (d) => {
         const dt = new Date(d);
         const day = dt.getDay(); // Sun=0
@@ -67,7 +65,6 @@ export default function ActivitiesTab({ childId, termId }) {
         return true; // "This term" already scoped by API
     };
 
-    // UI text that adapts to category (fallback to generic)
     const friendlyHeader = (cat) => {
         if (!cat) return "All Activity Logs";
         const map = {
@@ -88,22 +85,53 @@ export default function ActivitiesTab({ childId, termId }) {
         return map[cat] || `No ${cat} notes ${preset.toLowerCase()}.`;
     };
 
-    // Pick a dot color for each row
     const colorForLogDot = (log, selectedCat) => {
-        if (!log?.tags?.length) return "#9CA3AF"; // gray-400
-        // if filtering by a category, try color from the first tag in that category
+        if (!log?.tags?.length) return "#9CA3AF";
         if (selectedCat) {
             const hit = log.tags.find(t => t.category === selectedCat);
             if (hit?.color) return hit.color;
             return "#9CA3AF";
         }
-        // else default to first tag's color
         return log.tags[0].color || "#9CA3AF";
     };
 
+    // NEW: start→current trend + fluctuation helper
+    function computeStartCurrentTrend(weeklyData, epsilon = 0.25) {
+        const vals = (weeklyData || [])
+            .map(w => Number(w.week_avg ?? 0))
+            .filter(v => !Number.isNaN(v));
 
+        if (!vals.length) {
+            return {
+                first: 0, last: 0, delta: 0, pct: 0,
+                trendLabel: "Steady", trendClass: "text-gray-600 font-semibold",
+                fluctuated: false
+            };
+        }
 
-    // Fetch overview
+        const first = vals[0];
+        const last = vals[vals.length - 1];
+        const delta = last - first;
+        const pct = first === 0 ? 0 : (delta / first) * 100;
+
+        let trendLabel = "Steady";
+        let trendClass = "text-gray-600 font-semibold";
+        if (delta > epsilon) {
+            trendLabel = "Improving";
+            trendClass = "text-green-600 font-semibold";
+        } else if (delta < -epsilon) {
+            trendLabel = "Declining";
+            trendClass = "text-red-600 font-semibold";
+        }
+
+        // Friendly fluctuation note if big swings mid-term (tune threshold for your 0–10 scale)
+        const range = Math.max(...vals) - Math.min(...vals);
+        const fluctuated = range >= 2; // e.g., any swing ≥ 2 points
+
+        return { first, last, delta, pct, trendLabel, trendClass, fluctuated };
+    }
+
+    // ----- data fetchers -----
     useEffect(() => {
         if (activeSubTab === "overview") {
             setLoadingOverview(true);
@@ -118,7 +146,6 @@ export default function ActivitiesTab({ childId, termId }) {
         }
     }, [activeSubTab, childId, termId]);
 
-    // Fetch progress summary
     useEffect(() => {
         if (activeSubTab === "progress") {
             setLoadingProgress(true);
@@ -127,14 +154,13 @@ export default function ActivitiesTab({ childId, termId }) {
                 .then((res) => {
                     setProgressData(res.data);
                     if (res.data.length > 0) {
-                        setSelectedActivity(res.data[0].activity_name); // auto-load first
+                        setSelectedActivity(res.data[0].activity_name);
                     }
                 })
                 .finally(() => setLoadingProgress(false));
         }
     }, [activeSubTab, childId, termId]);
 
-    // Fetch weekly data for selected activity
     useEffect(() => {
         if (!selectedActivity || activeSubTab !== "progress") return;
         setLoadingWeekly(true);
@@ -148,23 +174,19 @@ export default function ActivitiesTab({ childId, termId }) {
             .finally(() => setLoadingWeekly(false));
     }, [selectedActivity, childId, termId, activeSubTab]);
 
-
     useEffect(() => {
         if (activeSubTab === "badges") {
             setLoadingBadges(true);
             api
                 .get(`/activities/badges/${childId}/${termId}`)
                 .then((res) => {
-                    setBadgesData(res.data || {}); // store the object directly
+                    setBadgesData(res.data || {});
                 })
                 .catch(() => setBadgesData({}))
                 .finally(() => setLoadingBadges(false));
         }
     }, [activeSubTab, childId, termId]);
 
-
-
-    // Fetch logs from API when Logs tab active
     useEffect(() => {
         if (activeSubTab === "logs") {
             setLoadingLogs(true);
@@ -173,7 +195,6 @@ export default function ActivitiesTab({ childId, termId }) {
                 .then((res) => {
                     setLogsData(res.data || []);
 
-                    // Extract unique activity names & tags for filters
                     const activities = [
                         ...new Set(res.data.map((log) => log.activity_name)),
                     ];
@@ -191,27 +212,21 @@ export default function ActivitiesTab({ childId, termId }) {
 
     useEffect(() => {
         if (activeSubTab !== "logs") return;
-
-        // fetch tags -> categories
-        api.get("/activities/tags") // your router.get("/tags") path might be "/activities/tags" or "/tags"; adjust if needed
+        api.get("/activities/tags")
             .then(res => {
                 const tags = res.data || [];
                 setAllTags(tags);
 
-                // unique categories (ignore null/empty)
                 const cats = [...new Set(tags.map(t => t.category).filter(Boolean))];
 
-                // representative color per category: pick the first tag's color in that category that exists
                 const colorMap = {};
                 for (const c of cats) {
                     const tag = tags.find(t => t.category === c && t.color);
-                    colorMap[c] = tag?.color || "#6B7280"; // fallback gray-500
+                    colorMap[c] = tag?.color || "#6B7280";
                 }
 
                 setTagCategories(cats);
                 setCategoryColor(colorMap);
-
-                // keep selectedCategory if still valid; else reset
                 setSelectedCategory(prev => (prev && cats.includes(prev) ? prev : ""));
             })
             .catch(() => {
@@ -222,8 +237,7 @@ export default function ActivitiesTab({ childId, termId }) {
             });
     }, [activeSubTab]);
 
-
-    // Filtered logs
+    // Filtered logs (activity/tag search UI kept intact, even if not shown in table below)
     const filteredLogs = logsData.filter((log) => {
         const matchesSearch = log.comment
             ?.toLowerCase()
@@ -235,10 +249,10 @@ export default function ActivitiesTab({ childId, termId }) {
         return matchesSearch && matchesActivity && matchesTag;
     });
 
-    // Pagination logic
     const indexOfLastLog = currentPage * logsPerPage;
     const indexOfFirstLog = indexOfLastLog - logsPerPage;
     const paginatedLogs = filteredLogs.slice(indexOfFirstLog, indexOfLastLog);
+
     return (
         <div className="text-gray-900">
             {/* Sub-tabs */}
@@ -266,12 +280,9 @@ export default function ActivitiesTab({ childId, termId }) {
                     )}
                     {overviewData && (
                         <div className="bg-white rounded-2xl shadow-lg p-4 space-y-6">
-                            {/* Banner heading */}
-                            {/* Banner heading */}
                             <h2 className="text-lg font-bold">Key Highlights</h2>
                             <div className="space-y-2">
                                 {(overviewData?.insights || []).map((ins, i) => {
-                                    // be flexible about the field name coming from the API
                                     const activityName =
                                         ins.activity_name || ins.activity || ins.activityName || "";
 
@@ -286,7 +297,6 @@ export default function ActivitiesTab({ childId, termId }) {
                                         <div key={i} className={cls}>
                                             {activityName ? (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-white/80 text-gray-800">
-                                                    {/* small dot for visual cue */}
                                                     <span className="w-2 h-2 rounded-full bg-gray-500 inline-block" />
                                                     {activityName}
                                                 </span>
@@ -297,7 +307,7 @@ export default function ActivitiesTab({ childId, termId }) {
                                     );
                                 })}
                             </div>
-                            {/* Participation chart */}
+
                             {overviewData.category_breakdown.length > 0 && (
                                 <>
                                     <h2 className="text-lg font-bold">
@@ -333,7 +343,6 @@ export default function ActivitiesTab({ childId, termId }) {
                                 </>
                             )}
 
-                            {/* Recent logs */}
                             <h2 className="text-lg font-bold">Recent Activity Logs</h2>
                             <table className="w-full border text-sm">
                                 <thead>
@@ -394,7 +403,6 @@ export default function ActivitiesTab({ childId, termId }) {
                         </p>
                     ) : (
                         <>
-                            {/* Progress table */}
                             <table className="w-full border text-sm mb-6">
                                 <thead>
                                     <tr className="bg-gray-200 text-left">
@@ -429,8 +437,7 @@ export default function ActivitiesTab({ childId, termId }) {
                                                             <div
                                                                 className={`${color} h-4 rounded`}
                                                                 style={{
-                                                                    width: `${(item.avg_rating / 10) * 100
-                                                                        }%`,
+                                                                    width: `${(item.avg_rating / 10) * 100}%`,
                                                                 }}
                                                             />
                                                         </div>
@@ -473,8 +480,8 @@ export default function ActivitiesTab({ childId, termId }) {
                                         <p className="text-gray-500 italic">No weekly data available.</p>
                                     ) : (
                                         <>
-                                            {/* Average + trend */}
-                                            <div className="mb-2 text-sm">
+                                            {/* Average only */}
+                                            <div className="mb-1 text-sm">
                                                 <span className="font-semibold">
                                                     Average:{" "}
                                                     {(
@@ -482,19 +489,38 @@ export default function ActivitiesTab({ childId, termId }) {
                                                         weeklyData.length
                                                     ).toFixed(1)}
                                                 </span>
-                                                {" – "}
-                                                {Number(weeklyData[weeklyData.length - 1].week_avg) >
-                                                    Number(weeklyData[0].week_avg) ? (
-                                                    <span className="text-green-600 font-semibold">Improving</span>
-                                                ) : Number(weeklyData[weeklyData.length - 1].week_avg) <
-                                                    Number(weeklyData[0].week_avg) ? (
-                                                    <span className="text-red-600 font-semibold">Declining</span>
-                                                ) : (
-                                                    <span className="text-gray-600 font-semibold">Steady</span>
-                                                )}
                                             </div>
 
-                                            {/* Chart */}
+                                            {/* Start → Current + trend + friendly fluctuation note */}
+                                            {(() => {
+                                                const {
+                                                    first, last, delta, pct,
+                                                    trendLabel, trendClass, fluctuated
+                                                } = computeStartCurrentTrend(weeklyData);
+
+                                                return (
+                                                    <div className="mb-3 text-sm text-gray-700">
+                                                        Term start:{" "}
+                                                        <span className="font-semibold">
+                                                            {first.toFixed(1)}
+                                                        </span>{" "}
+                                                        → Current:{" "}
+                                                        <span className="font-semibold">
+                                                            {last.toFixed(1)}
+                                                        </span>{" "}
+                                                        ({delta >= 0 ? "+" : ""}{delta.toFixed(1)})
+                                                        {" – "}
+                                                        <span className={trendClass}>{trendLabel}</span>
+                                                        {fluctuated && (
+                                                            <span className="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs">
+                                                                Fluctuated during the term
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Chart (unchanged) */}
                                             <div className="mx-auto" style={{ height: "300px", maxWidth: "900px" }}>
                                                 <Line
                                                     data={{
@@ -547,6 +573,7 @@ export default function ActivitiesTab({ childId, termId }) {
                     )}
                 </div>
             )}
+
             {/* BADGES TAB */}
             {activeSubTab === "badges" && (
                 <div className="bg-white rounded-2xl shadow-lg p-4">
@@ -580,17 +607,12 @@ export default function ActivitiesTab({ childId, termId }) {
                 </div>
             )}
 
-
-
-
-
             {/* LOGS TAB */}
             {activeSubTab === "logs" && (
                 <div className="bg-white rounded-2xl shadow-lg p-4">
                     {/* Dynamic category chips */}
                     <div className="flex flex-wrap items-center gap-2 mb-3">
                         <div className="flex flex-wrap gap-2">
-                            {/* "All" chip */}
                             <button
                                 onClick={() => { setSelectedCategory(""); setCurrentPage(1); }}
                                 className={`px-3 py-1 rounded-full text-sm border transition
@@ -599,7 +621,6 @@ export default function ActivitiesTab({ childId, termId }) {
                                 All
                             </button>
 
-                            {/* One chip per discovered category */}
                             {tagCategories.map((cat) => (
                                 <button
                                     key={cat}
@@ -647,7 +668,6 @@ export default function ActivitiesTab({ childId, termId }) {
                     {loadingLogs ? (
                         <p>Loading logs...</p>
                     ) : (() => {
-                        // Filter by date preset, category chip, and text
                         const filtered = (logsData || []).filter(log => {
                             const byDate = withinPreset(log.date, datePreset);
                             const byCategory = !selectedCategory
@@ -663,7 +683,6 @@ export default function ActivitiesTab({ childId, termId }) {
                             return <p className="text-gray-600 italic">{emptyMessage(selectedCategory, datePreset)}</p>;
                         }
 
-                        // Pagination
                         const indexOfLast = currentPage * logsPerPage;
                         const indexOfFirst = indexOfLast - logsPerPage;
                         const page = filtered.slice(indexOfFirst, indexOfLast);
@@ -747,8 +766,6 @@ export default function ActivitiesTab({ childId, termId }) {
                     })()}
                 </div>
             )}
-
-
         </div>
     );
 }
