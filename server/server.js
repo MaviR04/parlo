@@ -78,7 +78,7 @@ const server = app.listen(process.env.API_PORT, () => {
 })
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173"
+    origin: ["http://localhost:5173","http://13.60.249.224:3001"]
   }
 });
 
