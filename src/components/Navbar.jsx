@@ -1,14 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
+import api from "../axios";
 
 function Navbar({ user, setUser }) {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
-      await fetch("http://localhost:3001/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
+      api.post('/auth/logout',{withCredentials:true})
       setUser({});
       navigate("/login");
     } catch (err) {

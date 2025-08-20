@@ -7,7 +7,7 @@ import Register from './pages/register.jsx';
 import AdminPanel from './pages/AdminPanel.jsx';
 import CalendarApp from './pages/TeacherCalendar.jsx';
 import ParentCalendarApp from './pages/ParentCalender.jsx';
-import TeacherDashboard from "./pages/TeacherDashBoard.jsx";
+import TeacherDashboard from "./pages/TeacherDashboard.jsx";
 import StudentProfile from "./pages/StudentProfile.jsx";
 
 

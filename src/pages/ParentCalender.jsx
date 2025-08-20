@@ -6,7 +6,7 @@ import {
   createViewWeek,
 } from '@schedule-x/calendar'
 import { createEventModalPlugin } from '@schedule-x/event-modal'
-import { useEffect, useState } from 'react'
+import { useEffect, useState,useMemo } from 'react'
 import { createEventsServicePlugin } from '@schedule-x/events-service'
 import '@schedule-x/theme-default/dist/index.css'
 import api from '../axios'
@@ -36,7 +36,11 @@ const eventModal = createEventModalPlugin()
 function CalendarApp({user}) {
   const eventsService = useState(() => createEventsServicePlugin())[0]
   const [events, setEvents] = useState([])
+  const [unreadEvents, setUnreadEvents] = useState([]);
+  const [subjectsTeachers, setSubjectTeacher] = useState([]);
   let navigate = useNavigate();
+
+  
 
 
      if(!user.userRole || user.userRole !== "Parent"){
@@ -103,22 +107,27 @@ function CalendarApp({user}) {
   
 
   useEffect(()=>{
-    api.get("http://localhost:3001/announcement/for-parent")
+    api.get("/announcement/for-parent")
       .then((res) => {
         console.log(res.data)
         mapColors(res)
+        setSubjectTeacher(MapTeachersToSubjects(res))
         const formattedEvents = res.data.map(event => {
-        const classid = parseInt(event.classid)
+        const classid = parseInt(event.classid, 10);
+        const teacher_id = parseInt(event.teacher_id, 10); // <— persist numeric
         return {
           ...event,
           classid,
+          teacher_id,
           _options: {
-            additionalClasses: [classColorMap[classid] || 'blue']
+            additionalClasses: [classColorMap[teacher_id] || 'blue', 'cursor-pointer']
           }
-        }
-      })
+        };
+      });
       console.log("Events fetched:", formattedEvents)
-      eventsService.set(formattedEvents)
+      const UnreadEvents = formattedEvents.filter(event => !event.read)
+      setUnreadEvents(UnreadEvents)
+      eventsService.set(UnreadEvents)
       setEvents(formattedEvents)
       })
       .catch((err) => {
@@ -130,6 +139,16 @@ function CalendarApp({user}) {
 
   const monthView = createViewMonthGrid()
 
+  const callbacks = {
+     onEventClick(calendarEvent, e) {
+      console.log('onEventClick', calendarEvent)
+      api.post('/announcement/read',{announcementID:calendarEvent.id})
+      .then(res => console.log(res))
+      .catch((err)=>{
+        console.error(err)
+      })
+    },
+  }
 
 
   const calendar = useCalendarApp({
@@ -137,16 +156,52 @@ function CalendarApp({user}) {
     events: [],
     defaultView: monthView,
     plugins: [eventsService, eventModal],
+    callbacks
   })  
 
+const [filtered, setFilterered] = useState({ id: null, active: false });
+const [viewRead, setViewRead] = useState(false);
+
+const baseEvents = useMemo(
+  () => (viewRead ? events : unreadEvents),
+  [viewRead, events, unreadEvents]
+);
+
+const visibleEvents = useMemo(() => {
+  if (filtered.active && filtered.id != null) {
+    return baseEvents.filter(e => e.teacher_id === filtered.id);
+  }
+  return baseEvents;
+}, [baseEvents, filtered]);
+
+useEffect(() => {
+  eventsService.set(visibleEvents);
+}, [visibleEvents, eventsService]);
 
 
   return (
-    <div className="bg-white h-screen flex items-center justify-center">
-      <div className="drop-shadow-md">
-        <ScheduleXCalendar calendarApp={calendar} customComponents={customComponents}  />
+      <div className="bg-white h-screen flex flex-col items-center justify-center">
+         <div className='bg-white rounded-2xl w-7/8 h-8 shadow-md mb-2 flex items-center gap-2'>
+          <div className={(viewRead ? "bg-primary text-white" : "" )+ ' badge badge-outline badge-primary ml-3 cursor-pointer rounded-2xl hover:bg-primary hover:text-white transition'}
+            onClick={() => setViewRead(v => !v)}
+          >Read</div>
+          {subjectsTeachers.map(s => (
+            <div key={s.id} className={(filtered.id == s.id && filtered.active ? "badge badge-primary rounded-2xl cursor-pointer border-0" : "badge badge-soft rounded-2xl cursor-pointer opacity-50 border-0" )+ " hover:opacity-100 transition " + classColorMap[parseInt(s.id)]} 
+                onClick={(e)=>{
+                   setFilterered(prev =>
+                  prev.id === s.id && prev.active
+                    ? { id: null, active: false }
+                    : { id: s.id, active: true }
+                );
+                }}
+            >{s.subject}</div>
+          ))}
+         </div>
+        <div className="drop-shadow-md">
+          <ScheduleXCalendar calendarApp={calendar} customComponent s={customComponents}  />
+        </div>
       </div>
-    </div>
+
   )
 }
 
@@ -155,9 +210,10 @@ const usedColors = new Set()
 
 function mapColors(res) {
   res.data.forEach(event => {
-    event.classid = parseInt(event.classid)
+    event.teacher_id = parseInt(event.teacher_id)
+    const subject = event.teacher_role.split('_')[0]
 
-    if (!classColorMap[event.classid]) {
+    if (!classColorMap[event.teacher_id]) {
       // Filter unused colors
       const availableColors = colorClasses.filter(c => !usedColors.has(c))
 
@@ -166,8 +222,27 @@ function mapColors(res) {
         ? availableColors[Math.floor(Math.random() * availableColors.length)]
         : colorClasses[Math.floor(Math.random() * colorClasses.length)] // allow repeats if necessary
 
-      classColorMap[event.classid] = chosenColor
+      classColorMap[event.teacher_id] = chosenColor
       usedColors.add(chosenColor)
     }
   })
 }
+function MapTeachersToSubjects(res) {
+  const subjectTeacherMapping = new Map();
+
+  res.data.forEach(event => {
+    const teacher_id = parseInt(event.teacher_id);
+    const subject = event.teacher_role.split(' ')[0];
+
+    // key will be unique per teacher+subject
+    const key = `${teacher_id}-${subject}`;
+
+    if (!subjectTeacherMapping.has(key)) {
+      subjectTeacherMapping.set(key, { id: teacher_id, subject });
+    }
+  });
+
+  // convert Map values back to array
+  return Array.from(subjectTeacherMapping.values());
+}
+

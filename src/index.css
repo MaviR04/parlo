@@ -63,7 +63,9 @@
   color: white !important;
 }
 
-
+.hidden{
+  visibility: hidden;
+}
 
 
 /* Print only the #print-target area */

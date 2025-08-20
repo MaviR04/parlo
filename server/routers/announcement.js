@@ -37,16 +37,20 @@ router.get("/my", async (req, res) => {
   try {
     const announcements = await db.any(
         `SELECT 
-         a.announcementid AS id,
-         a.title,
-         a.description,
-         to_char(a."start", 'YYYY-MM-DD HH24:MI') AS start,
-         to_char(a."end", 'YYYY-MM-DD HH24:MI') AS end,
-         a.classid,
-         c.classname
-       FROM announcements a
-       JOIN classes c ON a.classid = c.classid
-       WHERE a.created_by = $1`,
+          a.announcementid AS id,
+          a.title,
+          a.description,
+          to_char(a."start", 'YYYY-MM-DD HH24:MI') AS start,
+          to_char(a."end", 'YYYY-MM-DD HH24:MI')   AS end,
+          a.classid,
+          c.classname,
+          CASE WHEN ar.announcementid IS NOT NULL THEN true ELSE false END AS read
+        FROM announcements a
+        JOIN classes c ON a.classid = c.classid
+        LEFT JOIN announcement_reads ar 
+       ON ar.announcementid = a.announcementid 
+      AND ar.userid = $1       
+      WHERE a.created_by = $1;`,
       [userID]
     );
 
@@ -95,24 +99,29 @@ router.get("/for-parent", async (req, res) => {
     const announcements = await db.any(
       `
      SELECT 
-      a.announcementid AS id, 
-      a.title,
-      a.description,
-      to_char(a.start, 'YYYY-MM-DD HH24:MI') AS start,
-      to_char(a.end, 'YYYY-MM-DD HH24:MI') AS end,
-      a.classid,
-      c.classname,
-      u.fname || ' ' || u.lname AS teacher_name,
-      uc.role AS teacher_role,
-      ch.fname || ' ' || ch.lname AS child_name
-    FROM children ch
-    JOIN childclasses cc ON cc.childid = ch.childid
-    JOIN classes c ON c.classid = cc.classid
-    JOIN announcements a ON a.classid = c.classid
-    JOIN users u ON u.userid = a.created_by
-    JOIN userclasses uc ON uc.userid = u.userid AND uc.classid = a.classid
-    WHERE ch.parentid = $1
-    ORDER BY a.start DESC
+  a.announcementid AS id, 
+  a.title,
+  a.description,
+  to_char(a.start, 'YYYY-MM-DD HH24:MI') AS start,
+  to_char(a.end,   'YYYY-MM-DD HH24:MI') AS end,
+  a.classid,
+  c.classname,
+  u.userid AS teacher_id,
+  u.fname || ' ' || u.lname AS teacher_name,
+  uc.role AS teacher_role,
+  ch.fname || ' ' || ch.lname AS child_name,
+  (ar.announcementid IS NOT NULL) AS read          -- 👈 per-parent read flag
+FROM children ch
+JOIN childclasses cc ON cc.childid = ch.childid
+JOIN classes c       ON c.classid = cc.classid
+JOIN announcements a ON a.classid = c.classid
+JOIN users u         ON u.userid = a.created_by
+JOIN userclasses uc  ON uc.userid = u.userid AND uc.classid = a.classid
+LEFT JOIN announcement_reads ar
+       ON ar.announcementid = a.announcementid
+      AND ar.userid = $1                           -- 👈 parent userid
+WHERE ch.parentid = $1
+ORDER BY a.start DESC;
           `,
       [userID]
     );
@@ -124,6 +133,24 @@ router.get("/for-parent", async (req, res) => {
   }
 });
 
-
+router.post('/read',async (req,res)=>{
+  const {announcementID} = req.body;
+   const userID = req.session.userID;
+    try {
+      const read = await db.any(
+          ` 
+      INSERT INTO announcement_reads (announcementid, userid)
+      VALUES ($1, $2)
+      ON CONFLICT (announcementid, userid) DO UPDATE
+      SET last_viewed_at = NOW(),
+          view_count     = announcement_reads.view_count + 1;
+      `, [announcementID,userID]
+        )
+    res.json(read);
+  } catch (err) {
+    console.error("Error inserting read:", err);
+    res.status(500).json({ error: "Failed to insert read" });
+  }
+})
 
 export default router;

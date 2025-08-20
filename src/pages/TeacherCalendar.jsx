@@ -128,7 +128,7 @@ function CalendarApp({user}) {
           ...event,
           classid,
           _options: {
-            additionalClasses: [classColorMap[classid] || 'blue']
+            additionalClasses: [classColorMap[classid] || 'blue', event.read ? "" : "hidden"]
           }
         }
       })
@@ -165,8 +165,8 @@ function CalendarApp({user}) {
   })  
 
   useEffect(() => {
-    axios
-      .get('http://localhost:3001/admin/teaching-classes', { withCredentials: true })
+    api
+      .get('/admin/teaching-classes', { withCredentials: true })
       .then((res) => {
         setClasses(res.data)
         if (res.data.length > 0) setSelectedClass(res.data[0].classid)
@@ -277,7 +277,7 @@ function CalendarApp({user}) {
                   classname: selectedClassName || classes.find(c => c.classid === selectedClass)?.classname,
                 }
                 console.log(updatedEvent)
-                api.post("http://localhost:3001/announcement", updatedEvent)
+                api.post("/announcement", updatedEvent)
                 .then(res => {
                   console.log("Announcement posted:", res.data)
                   eventsService.add({...updatedEvent, id:res.data.announcementid });
