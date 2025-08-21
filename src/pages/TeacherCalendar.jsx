@@ -118,7 +118,7 @@ function CalendarApp({user}) {
   
 
   useEffect(()=>{
-    api.get("http://localhost:3001/announcement/my")
+    api.get()
       .then((res) => {
         console.log(res.data)
         mapColors(res)
