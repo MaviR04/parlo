@@ -324,29 +324,44 @@ router.get("/by-assessment", requireLogin, async (req, res) => {
   }
 
   try {
-    // auth: must be a (subject) teacher of this class
-    const allowed = await db.oneOrNone(`
-      SELECT 1 FROM userclasses
-      WHERE classid = $1 AND userid = $2 AND LOWER(role) LIKE '%teacher%'
-    `, [classid, userId]);
-
+    // must be a teacher on this class
+    const allowed = await db.oneOrNone(
+      `SELECT 1
+       FROM userclasses
+       WHERE classid = $1::int AND userid = $2 AND LOWER(role) LIKE '%teacher%'`,
+      [classid, userId]
+    );
     if (!allowed) return res.status(403).json({ error: "Not authorized" });
 
-    const rows = await db.any(`
-      SELECT g.*, c.fname, c.lname
+    // Use existing columns (id, not gradeid). Trim + case-insensitive name match.
+    const rows = await db.any(
+      `
+      SELECT
+        g.id,
+        g.childid, g.classid, g.termid, g.subject,
+        g.assessment_name, g.assessment_label,
+        g.score, g.max_score, g.comment,
+        g.date_entered,
+        c.fname, c.lname
       FROM grades g
       JOIN children c ON c.childid = g.childid
-      WHERE g.classid = $1
+      WHERE g.classid = $1::int
         AND LOWER(g.subject) = LOWER($2)
-        AND g.termid = $3
-        AND g.assessment_name = $4
+        AND g.termid = $3::int
+        AND LOWER(TRIM(g.assessment_name)) = LOWER(TRIM($4))
       ORDER BY c.lname, c.fname
-    `, [classid, subject, termid, assessment_name]);
+      `,
+      [classid, subject, termid, assessment_name]
+    );
 
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
-    console.error("Error fetching by-assessment:", err);
-    res.status(500).json({ error: "Failed to fetch assessment grades" });
+    console.error("Error fetching by-assessment:", {
+      params: req.query,
+      message: err.message,
+      stack: err.stack,
+    });
+    return res.status(500).json({ error: "Failed to fetch assessment grades" });
   }
 });
 
@@ -356,66 +371,56 @@ router.get("/by-assessment", requireLogin, async (req, res) => {
  * Save or update a grade
  */
 router.post("/", requireLogin, async (req, res) => {
-    const userId = req.session.userID;
-    const {
-        childid,
-        classid,
-        subject,
-        termid,
-        assessment_name,
-        score,
-        max_score,
-        comment
-    } = req.body;
+  const userId = req.session.userID;
+  const {
+    childid, classid, subject, termid,
+    assessment_name, assessment_label, score, max_score, comment
+  } = req.body;
 
-    if (!childid || !classid || !subject || !termid || !assessment_name) {
-        return res.status(400).json({ error: "Missing required fields" });
-    }
+  if (!childid || !classid || !subject || !termid || !assessment_name) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
 
-    try {
-        // Verify subject teacher role for this class
-        const allowed = await db.oneOrNone(
-            `
-            SELECT 1
-            FROM userclasses
-            WHERE classid = $1
-              AND userid = $2
-              AND LOWER(role) LIKE '%teacher%'
-            `,
-            [classid, userId]
-        );
+  try {
+    const allowed = await db.oneOrNone(`
+      SELECT 1 FROM userclasses
+      WHERE classid = $1 AND userid = $2 AND LOWER(role) LIKE '%teacher%'`,
+      [classid, userId]
+    );
+    if (!allowed) return res.status(403).json({ error: "Not authorized for this class" });
 
-        if (!allowed) {
-            return res.status(403).json({ error: "Not authorized for this class" });
-        }
+    const monthLabel = new Date().toLocaleString("en-US", { month: "short" });
+    const labelToSave = assessment_label?.trim()
+      ? assessment_label.trim()
+      : `${assessment_name} - ${monthLabel}`;
 
-        // 🏷️ Generate label like "Monthly Test - Aug"
-        const monthLabel = new Date().toLocaleString('en-US', { month: 'short' });
-        const assessment_label = `${assessment_name} - ${monthLabel}`;
+    await db.none(`
+      INSERT INTO grades (
+        childid, classid, subject, termid,
+        assessment_name, assessment_label,
+        score, max_score, comment, entered_by
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT (childid, classid, subject, termid, assessment_name)
+      DO UPDATE SET
+        score           = EXCLUDED.score,
+        max_score       = EXCLUDED.max_score,
+        comment         = EXCLUDED.comment,
+        assessment_label= COALESCE(EXCLUDED.assessment_label, grades.assessment_label),
+        entered_by      = EXCLUDED.entered_by
+      -- NOTE: do NOT update date_entered here
+    `,
+      [childid, classid, subject, termid,
+       assessment_name, labelToSave, score, max_score, comment, userId]
+    );
 
-        await db.none(
-            `
-            INSERT INTO grades (
-                childid, classid, subject, termid, assessment_name, assessment_label, score, max_score, comment, entered_by
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT (childid, classid, subject, termid, assessment_label)
-            DO UPDATE SET
-                score = EXCLUDED.score,
-                max_score = EXCLUDED.max_score,
-                comment = EXCLUDED.comment,
-                entered_by = EXCLUDED.entered_by,
-                date_entered = NOW()
-            `,
-            [childid, classid, subject, termid, assessment_name, assessment_label, score, max_score, comment, userId]
-        );
-
-        res.json({ success: true });
-    } catch (err) {
-        console.error("Error saving grade:", err);
-        res.status(500).json({ error: "Failed to save grade" });
-    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error saving grade:", err);
+    res.status(500).json({ error: "Failed to save grade" });
+  }
 });
+
 
 
 // GET /api/grades/assessments-for-class
@@ -461,83 +466,77 @@ router.get("/assessments-for-class", requireLogin, async (req, res) => {
  * Save or update multiple grades in one request
  */
 router.post("/batch", requireLogin, async (req, res) => {
-    const userId = req.session.userID;
-    const { grades } = req.body;
+  const userId = req.session.userID;
+  const { grades } = req.body;
 
-    if (!Array.isArray(grades) || grades.length === 0) {
-        return res.status(400).json({ error: "Grades array is required" });
-    }
+  if (!Array.isArray(grades) || grades.length === 0) {
+    return res.status(400).json({ error: "Grades array is required" });
+  }
 
-    try {
-        await db.tx(async (t) => {
-            for (const g of grades) {
-                const {
-                    childid,
-                    classid,
-                    subject,
-                    termid,
-                    assessment_name,
-                    score,
-                    max_score,
-                    comment
-                } = g;
+  try {
+    await db.tx(async (t) => {
+      for (const g of grades) {
+        const {
+          gradeid, // <-- when editing existing row
+          childid, classid, subject, termid,
+          assessment_name, assessment_label,
+          score, max_score, comment
+        } = g;
 
-                // Verify subject teacher role for this class
-                const allowed = await t.oneOrNone(
-                    `
-                    SELECT 1
-                    FROM userclasses
-                    WHERE classid = $1
-                      AND userid = $2
-                      AND LOWER(role) LIKE '%teacher%'
-                    `,
-                    [classid, userId]
-                );
-                if (!allowed) {
-                    throw new Error(`Not authorized for class ${classid}`);
-                }
+        const allowed = await t.oneOrNone(`
+          SELECT 1 FROM userclasses
+          WHERE classid = $1 AND userid = $2 AND LOWER(role) LIKE '%teacher%'`,
+          [classid, userId]
+        );
+        if (!allowed) throw new Error(`Not authorized for class ${classid}`);
 
-                // 🏷️ Generate label like "Monthly Test - Aug"
-                const monthLabel = new Date().toLocaleString('en-US', { month: 'short' });
-                const assessment_label = `${assessment_name} - ${monthLabel}`;
+        if (gradeid) {
+          // ← Edit existing row IN PLACE (do not change date_entered)
+          await t.none(`
+            UPDATE grades
+               SET score            = $1,
+                   max_score        = $2,
+                   comment          = $3,
+                   assessment_label = COALESCE($4, assessment_label),
+                   entered_by       = $5
+             WHERE gradeid          = $6`,
+            [score, max_score, comment, assessment_label ?? null, userId, gradeid]
+          );
+        } else {
+          // ← Insert (or upsert by *name* within term)
+          const monthLabel = new Date().toLocaleString("en-US", { month: "short" });
+          const labelToSave = assessment_label?.trim()
+            ? assessment_label.trim()
+            : `${assessment_name} - ${monthLabel}`;
 
-                await t.none(
-                    `
-  INSERT INTO grades (
-      childid, classid, subject, termid, assessment_name, assessment_label, score, max_score, comment, entered_by
-  )
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-  ON CONFLICT (childid, classid, subject, termid, assessment_name)
-  DO UPDATE SET
-      assessment_label = EXCLUDED.assessment_label,
-      score = EXCLUDED.score,
-      max_score = EXCLUDED.max_score,
-      comment = EXCLUDED.comment,
-      entered_by = EXCLUDED.entered_by,
-      date_entered = NOW()
-  `,
-                    [
-                        childid,
-                        classid,
-                        subject,
-                        termid,
-                        assessment_name,
-                        assessment_label || null,
-                        score,
-                        max_score,
-                        comment,
-                        userId
-                    ]
-                );
+          await t.none(`
+            INSERT INTO grades (
+              childid, classid, subject, termid,
+              assessment_name, assessment_label,
+              score, max_score, comment, entered_by
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            ON CONFLICT (childid, classid, subject, termid, assessment_name)
+            DO UPDATE SET
+              score            = EXCLUDED.score,
+              max_score        = EXCLUDED.max_score,
+              comment          = EXCLUDED.comment,
+              assessment_label = COALESCE(EXCLUDED.assessment_label, grades.assessment_label),
+              entered_by       = EXCLUDED.entered_by
+          `,
+            [childid, classid, subject, termid,
+             assessment_name, labelToSave,
+             score, max_score, comment, userId]
+          );
+        }
+      }
+    });
 
-            }
-        });
-
-        res.json({ success: true, message: "Grades saved successfully" });
-    } catch (err) {
-        console.error("Error saving batch grades:", err);
-        res.status(500).json({ error: err.message || "Failed to save grades" });
-    }
+    res.json({ success: true, message: "Grades saved successfully" });
+  } catch (err) {
+    console.error("Error saving batch grades:", err);
+    res.status(500).json({ error: err.message || "Failed to save grades" });
+  }
 });
 
 
