@@ -1,9 +1,50 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import api from "../axios";
 
-function getMonthLabel() {
-    const now = new Date();
-    return now.toLocaleString("default", { month: "short" });
+function monthAbbrev() {
+    return new Date().toLocaleString("en-US", { month: "short" });
+}
+
+// --- fuzzy helpers: normalize + Levenshtein (for typos like "Monthy" vs "Monthly")
+function normalizeName(s) {
+    return (s || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")      // keep letters/numbers, collapse others to spaces
+        .replace(/\s+/g, " ")             // collapse spaces
+        .trim();
+}
+function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    const dp = Array.from({ length: m + 1 }, (_, i) => {
+        const row = Array(n + 1).fill(0);
+        row[0] = i;
+        return row;
+    });
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+                dp[i - 1][j] + 1,      // deletion
+                dp[i][j - 1] + 1,      // insertion
+                dp[i - 1][j - 1] + cost // substitution
+            );
+        }
+    }
+    return dp[m][n];
+}
+function similar(aRaw, bRaw) {
+    const a = normalizeName(aRaw);
+    const b = normalizeName(bRaw);
+    if (!a || !b) return false;
+    if (a === b) return true; // exact after normalization
+    const dist = levenshtein(a, b);
+    const maxLen = Math.max(a.length, b.length);
+    const ratio = 1 - dist / Math.max(1, maxLen);
+    // treat as conflict if very close
+    return ratio >= 0.85 || dist <= 1;
 }
 
 export default function EnterGrades() {
@@ -30,14 +71,20 @@ export default function EnterGrades() {
     const [pastAssessments, setPastAssessments] = useState([]);
     const [selectedPast, setSelectedPast] = useState("");
 
+    // Only WARN (no “not used” text)
+    const [labelUsed, setLabelUsed] = useState(false);
+
+    // name conflict (term-scoped, fuzzy)
+    const [nameConflict, setNameConflict] = useState(false);
+
     const autoSaveInterval = useRef(null);
-    const lowPromptShownRef = useRef(new Set()); // one-time toast per student
+    const lowPromptShownRef = useRef(new Set());
+    const labelCheckTimerRef = useRef(null);
 
     // Modal state
     const [showPromptModal, setShowPromptModal] = useState(false);
     const [selectedStudentId, setSelectedStudentId] = useState(null);
 
-    // ===== Conversation starters (parent-friendly, concise) =====
     const lowScorePrompts = [
         "Your child scored below expectations in this assessment, but with consistent support, I’m confident they can improve.",
         "This result shows there’s room for growth, and I will focus on helping your child strengthen these skills.",
@@ -45,17 +92,10 @@ export default function EnterGrades() {
         "We will work together on the key areas to help your child gain confidence and improve performance."
     ];
 
-    // ===== UI helpers =====
     const showToast = (msg) => {
         setToastMsg(msg);
         setTimeout(() => setToastMsg(""), 3000);
     };
-
-    const generateLabel = () => {
-        if (!globalAssessmentName) return "";
-        return manualLabelOverride || `${globalAssessmentName} - ${getMonthLabel()}`;
-    };
-
     const getSubjectFromRole = (role) => {
         if (!role) return "";
         if (role.toLowerCase().includes("teacher")) {
@@ -64,32 +104,38 @@ export default function EnterGrades() {
         return role;
     };
 
-    // ===== Numeric helpers / low-score logic (≤ 50%) =====
+    // Build label to SAVE: "{Name} - {Mon}" + optional " - {Custom}"
+    const buildSuggestedLabel = (name, custom) => {
+        if (!name?.trim()) return "";
+        const base = `${name.trim()} - ${monthAbbrev()}`;
+        const extra = custom?.trim() ? ` - ${custom.trim()}` : "";
+        return `${base}${extra}`;
+    };
+    const generateLabel = () => buildSuggestedLabel(globalAssessmentName, manualLabelOverride);
+
+    // numeric helpers
     const toNum = (v) => {
         const n = Number(v);
         return Number.isFinite(n) ? n : null;
     };
-
     const getPercent = (g) => {
         const s = toNum(g?.score);
         const m = toNum(g?.max_score ?? globalMaxScore);
         if (s === null || m === null || m <= 0) return null;
         return (s / m) * 100;
     };
-
     const isLowScore = (g) => {
         const p = getPercent(g);
-        return p !== null && p <= 50; // inclusive at 50%
+        return p !== null && p <= 50;
     };
-
     const rowClassFor = (filled, low) => {
         const base = filled ? "bg-green-50" : "bg-red-50";
         return low ? `${base} ring-1 ring-rose-300 border-l-4 border-l-rose-500` : base;
     };
 
-    // ===== Effects =====
+    // init
     useEffect(() => {
-        async function init() {
+        (async () => {
             try {
                 const [termRes, classRes] = await Promise.all([
                     api.get("/terms/current"),
@@ -104,8 +150,7 @@ export default function EnterGrades() {
             } catch {
                 showToast("Failed to load term or classes");
             }
-        }
-        init();
+        })();
     }, []);
 
     useEffect(() => {
@@ -115,7 +160,7 @@ export default function EnterGrades() {
 
     useEffect(() => {
         if (!selectedClass || !selectedTerm) return;
-        async function fetchData() {
+        (async () => {
             setLoading(true);
             try {
                 const [stuRes, pastRes] = await Promise.all([
@@ -132,15 +177,12 @@ export default function EnterGrades() {
             } finally {
                 setLoading(false);
             }
-        }
-        fetchData();
+        })();
     }, [selectedClass, selectedTerm, autoSubject]);
 
-    useEffect(() => {
-        setSelectedPast("");
-    }, [selectedClass, selectedTerm, autoSubject]);
+    useEffect(() => setSelectedPast(""), [selectedClass, selectedTerm, autoSubject]);
 
-    // Auto-save every 30s if there are pending edits
+    // Autosave
     useEffect(() => {
         autoSaveInterval.current = setInterval(() => {
             if (saveStatus === "Unsaved changes") saveGrades();
@@ -148,32 +190,96 @@ export default function EnterGrades() {
         return () => clearInterval(autoSaveInterval.current);
     }, [saveStatus, grades]);
 
-    // ESC to close modal
+    // ESC closes modal
     useEffect(() => {
-        const onKey = (e) => {
-            if (e.key === "Escape") setShowPromptModal(false);
-        };
+        const onKey = (e) => e.key === "Escape" && setShowPromptModal(false);
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
     }, []);
 
-    // ===== Handlers =====
+    // --- TERM-SCOPED NAME CONFLICT (fuzzy) using current term's past assessments
+    const currentTermPast = useMemo(
+        () => pastAssessments.filter((a) => a.termid === selectedTerm?.termid),
+        [pastAssessments, selectedTerm]
+    );
 
-    // Store raw text while typing (no clamping here).
+    useEffect(() => {
+        const name = globalAssessmentName.trim();
+        if (!name) {
+            setNameConflict(false);
+            return;
+        }
+        const conflict = currentTermPast.some((a) => similar(a.assessment_name, name));
+        setNameConflict(conflict);
+    }, [globalAssessmentName, currentTermPast]);
+
+    // --- LABEL USED (exact match; warn only if yes). If name conflicts, skip label check.
+    useEffect(() => {
+        clearTimeout(labelCheckTimerRef.current);
+        if (!selectedClass || !selectedTerm?.termid || !autoSubject) {
+            setLabelUsed(false);
+            return;
+        }
+        const name = globalAssessmentName.trim();
+        if (!name || nameConflict) {
+            setLabelUsed(false);
+            return;
+        }
+        const candidateLabel = generateLabel();
+        if (!candidateLabel) {
+            setLabelUsed(false);
+            return;
+        }
+        labelCheckTimerRef.current = setTimeout(async () => {
+            try {
+                const { data } = await api.get("/grades/by-assessment", {
+                    params: {
+                        classid: selectedClass,
+                        subject: autoSubject,
+                        termid: selectedTerm.termid,
+                        assessment_name: name,
+                    },
+                });
+                const rows = Array.isArray(data) ? data : [];
+                const exists = rows.some(
+                    (r) => (r.assessment_label || "").trim() === candidateLabel
+                );
+                setLabelUsed(exists);
+            } catch {
+                setLabelUsed(false);
+            }
+        }, 350);
+        return () => clearTimeout(labelCheckTimerRef.current);
+    }, [
+        selectedClass,
+        selectedTerm,
+        autoSubject,
+        globalAssessmentName,
+        manualLabelOverride,
+        nameConflict,
+    ]);
+
+    // derived validation
+    const hasName = !!globalAssessmentName.trim();
+    const hasAnyScore = useMemo(
+        () =>
+            Object.values(grades).some(
+                (g) => g && g.score !== "" && g.score !== undefined && Number.isFinite(Number(g.score))
+            ),
+        [grades]
+    );
+    const canEditRows = hasName && !nameConflict;
+    const canSave = hasName && !nameConflict && hasAnyScore && !loading;
+
+    // handlers
     const handleGradeChange = (childid, field, rawValue) => {
         setSaveStatus("Unsaved changes");
-
         setGrades((prev) => {
             const current = prev[childid] || {};
             const next = {
                 ...prev,
-                [childid]: {
-                    ...current,
-                    [field]: rawValue, // store as-is (string) to avoid jumps
-                },
+                [childid]: { ...current, [field]: rawValue },
             };
-
-            // Show a gentle toast once if they dip ≤ 50 while typing (no modal)
             if (field === "score") {
                 const sNum = toNum(rawValue);
                 const mNum = toNum(current.max_score ?? globalMaxScore);
@@ -185,90 +291,70 @@ export default function EnterGrades() {
                     }
                 }
             }
-
             return next;
         });
     };
 
-    // Clamp on blur: Score -> [0, max]
     const handleScoreBlur = (childid) => {
         setGrades((prev) => {
             const current = prev[childid] || {};
             const s = toNum(current.score);
             const m = toNum(current.max_score ?? globalMaxScore);
             if (s === null || m === null || m <= 0) return prev;
-
             const clamped = Math.max(0, Math.min(s, m));
-            if (clamped !== s) {
-                showToast("Score adjusted to be within 0–Max.");
-            }
-            return {
-                ...prev,
-                [childid]: { ...current, score: String(clamped) },
-            };
+            if (clamped !== s) showToast("Score adjusted to be within 0–Max.");
+            return { ...prev, [childid]: { ...current, score: String(clamped) } };
         });
     };
 
-    // Clamp on blur: Max -> ≥1, and cap score if needed
     const handleMaxBlur = (childid) => {
         setGrades((prev) => {
             const current = prev[childid] || {};
             let m = toNum(current.max_score ?? globalMaxScore);
             if (m === null) return prev;
             m = Math.max(1, m);
-
             const s = toNum(current.score);
             let nextScore = current.score;
             if (s !== null && s > m) {
                 nextScore = String(m);
                 showToast("Score capped to the updated Max.");
             }
-
-            return {
-                ...prev,
-                [childid]: { ...current, max_score: String(m), score: nextScore },
-            };
+            return { ...prev, [childid]: { ...current, max_score: String(m), score: nextScore } };
         });
     };
 
     const saveGrades = async () => {
-        if (!globalAssessmentName.trim()) {
-            return showToast("Assessment name is required.");
-        }
+        if (!hasName) return showToast("Assessment name is required.");
+        if (nameConflict) return showToast("That assessment name is too similar to one already used this term.");
+        if (!hasAnyScore) return showToast("Please enter at least one student's score.");
 
-        const hasMissingScores = students.some((s) => {
-            const g = grades[s.childid];
-            return !g || g.score === "" || g.score === undefined;
-        });
+        const labelToSave = generateLabel();
 
-        if (hasMissingScores) {
-            return showToast("Please enter score for all students.");
-        }
-
-        // Final clean (clamp and normalize) before sending
-        const payload = students.map((s) => {
-            const g = grades[s.childid] || {};
-            const maxClean = Math.max(1, Number(g.max_score ?? globalMaxScore) || 1);
-            const rawScore = Number(g.score);
-            const scoreClean = Number.isFinite(rawScore)
-                ? Math.max(0, Math.min(rawScore, maxClean))
-                : 0;
-
-            return {
-                childid: s.childid,
-                classid: selectedClass,
-                subject: autoSubject,
-                termid: selectedTerm.termid,
-                assessment_name: g.assessment_name || globalAssessmentName,
-                assessment_label: generateLabel(),
-                score: scoreClean,
-                max_score: maxClean,
-                comment: g.comment || null,
-            };
-        });
+        // Only send rows with a score
+        const filledRows = students
+            .map((s) => {
+                const g = grades[s.childid] || {};
+                const hasScore = g.score !== "" && g.score !== undefined && Number.isFinite(Number(g.score));
+                if (!hasScore) return null;
+                const maxClean = Math.max(1, Number(g.max_score ?? globalMaxScore) || 1);
+                const rawScore = Number(g.score);
+                const scoreClean = Math.max(0, Math.min(rawScore, maxClean));
+                return {
+                    childid: s.childid,
+                    classid: selectedClass,
+                    subject: autoSubject,
+                    termid: selectedTerm.termid,
+                    assessment_name: g.assessment_name || globalAssessmentName,
+                    assessment_label: labelToSave, // save composed label
+                    score: scoreClean,
+                    max_score: maxClean,
+                    comment: g.comment || null,
+                };
+            })
+            .filter(Boolean);
 
         try {
-            await api.post("/grades/batch", { grades: payload });
+            await api.post("/grades/batch", { grades: filledRows });
             setSaveStatus("All changes saved");
             showToast("Grades saved successfully");
         } catch {
@@ -276,15 +362,8 @@ export default function EnterGrades() {
         }
     };
 
-    // ===== Past assessments (current term only) =====
-    const currentTermPast = useMemo(
-        () => pastAssessments.filter((a) => a.termid === selectedTerm?.termid),
-        [pastAssessments, selectedTerm]
-    );
-
     const loadPastAssessment = async (assessmentName) => {
         if (!assessmentName || !selectedClass || !selectedTerm || !autoSubject) return;
-
         try {
             setLoading(true);
             const { data } = await api.get("/grades/by-assessment", {
@@ -306,7 +385,7 @@ export default function EnterGrades() {
                 };
             });
 
-            // Ensure all students are present
+            // ensure all students present
             students.forEach((st) => {
                 if (!map[st.childid]) {
                     map[st.childid] = {
@@ -337,16 +416,17 @@ export default function EnterGrades() {
         }
     };
 
-    // ===== Pagination =====
+    // pagination
     const filteredStudents = students.filter((s) =>
         `${s.fname} ${s.lname}`.toLowerCase().includes(searchTerm.toLowerCase())
     );
     const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
     const currentStudents = showAll
         ? filteredStudents
-        : filteredStudents.slice((currentPage - 1) * studentsPerPage, (currentPage) * studentsPerPage);
+        : filteredStudents.slice((currentPage - 1) * studentsPerPage, currentPage * studentsPerPage);
 
-    // ===== Render =====
+    const inputDisabledClass = canEditRows ? "" : "bg-gray-100 cursor-not-allowed opacity-70";
+
     return (
         <div className="p-6 max-w-5xl mx-auto mt-10 text-gray-800 bg-white shadow rounded">
             {toastMsg && (
@@ -389,12 +469,7 @@ export default function EnterGrades() {
                                     onClick={() => {
                                         setGrades((prev) => {
                                             const current = prev[selectedStudentId] || {};
-                                            // Replace; change to `${existing} ${prompt}` if you prefer append
-                                            const nextComment = prompt;
-                                            return {
-                                                ...prev,
-                                                [selectedStudentId]: { ...current, comment: nextComment },
-                                            };
+                                            return { ...prev, [selectedStudentId]: { ...current, comment: prompt } };
                                         });
                                         setShowPromptModal(false);
                                     }}
@@ -445,24 +520,40 @@ export default function EnterGrades() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                <div>
+                    <input
+                        type="text"
+                        placeholder="Assessment name *"
+                        value={globalAssessmentName}
+                        onChange={(e) => {
+                            setGlobalAssessmentName(e.target.value);
+                            setSaveStatus("Unsaved changes");
+                        }}
+                        className={`border px-4 py-2 rounded w-full ${nameConflict ? "border-rose-400" : ""}`}
+                        aria-invalid={nameConflict ? true : false}
+                    />
+                    {!hasName && (
+                        <div className="text-xs text-rose-600 mt-1">Enter an assessment name to enable grading.</div>
+                    )}
+                    {nameConflict && hasName && (
+                        <div className="text-xs text-rose-600 mt-1">
+                            That name is too similar to an assessment already used in <strong>{selectedTerm?.name}</strong>.
+                            Please choose a different name.
+                        </div>
+                    )}
+                </div>
+
                 <input
                     type="text"
-                    placeholder="Assessment name *"
-                    value={globalAssessmentName}
-                    onChange={(e) => {
-                        setGlobalAssessmentName(e.target.value);
-                        setSaveStatus("Unsaved changes");
-                    }}
-                    className="border px-4 py-2 rounded"
-                />
-                <input
-                    type="text"
-                    placeholder="Optional custom label"
+                    placeholder="Optional custom label (appends to suggested label)"
                     value={manualLabelOverride}
                     onChange={(e) => setManualLabelOverride(e.target.value)}
-                    className="border px-4 py-2 rounded"
+                    className="border px-4 py-2 rounded w-full"
                 />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <input
                     type="number"
                     placeholder="Max Score"
@@ -484,8 +575,12 @@ export default function EnterGrades() {
                 />
             </div>
 
-            <div className="mb-2 font-medium text-gray-700">
-                Auto-generated label: <span className="text-blue-600">{generateLabel()}</span>
+            {/* Suggestion + WARNINGS ONLY */}
+            <div className="mb-3 font-medium text-gray-700">
+                Suggested label: <span className="text-blue-600"> {generateLabel()}</span>
+                {labelUsed && !nameConflict && (
+                    <span className="text-xs text-amber-600 ml-2"> (Heads-up: this exact label was already used this term.)</span>
+                )}
             </div>
 
             {/* Past assessment (current term only) */}
@@ -553,14 +648,16 @@ export default function EnterGrades() {
                                         <input
                                             type="number"
                                             value={g.score ?? ""}
-                                            onChange={(e) => handleGradeChange(s.childid, "score", e.target.value)}
-                                            onBlur={() => handleScoreBlur(s.childid)}
+                                            onChange={(e) => canEditRows && handleGradeChange(s.childid, "score", e.target.value)}
+                                            onBlur={() => canEditRows && handleScoreBlur(s.childid)}
                                             min={0}
                                             inputMode="numeric"
                                             pattern="[0-9]*"
                                             step="1"
-                                            onWheel={(e) => e.currentTarget.blur()} // prevent wheel changing value
-                                            className="w-full border px-2 py-1 rounded"
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                            disabled={!canEditRows}
+                                            className={`w-full border px-2 py-1 rounded ${canEditRows ? "" : "bg-gray-100 cursor-not-allowed opacity-70"}`}
+                                            placeholder={!hasName ? "Add assessment name first" : nameConflict ? "Name conflicts this term" : ""}
                                         />
                                     </td>
 
@@ -572,16 +669,18 @@ export default function EnterGrades() {
                                             className="w-full border px-2 py-1 rounded bg-gray-100 cursor-not-allowed"
                                         />
                                     </td>
+
                                     <td className="px-3 py-2 border align-top">
                                         <div className="flex items-start gap-2">
                                             <textarea
                                                 rows={2}
                                                 value={g.comment || ""}
-                                                onChange={(e) => handleGradeChange(s.childid, "comment", e.target.value)}
-                                                className={`w-full border px-2 py-1 rounded resize-y ${low ? "border-rose-300" : ""}`}
-                                                placeholder={low ? "Add a kind, specific plan…" : ""}
+                                                onChange={(e) => canEditRows && handleGradeChange(s.childid, "comment", e.target.value)}
+                                                disabled={!canEditRows}
+                                                className={`w-full border px-2 py-1 rounded resize-y ${low ? "border-rose-300" : ""} ${canEditRows ? "" : "bg-gray-100 cursor-not-allowed opacity-70"}`}
+                                                placeholder={!hasName ? "Add assessment name first" : nameConflict ? "Name conflicts this term" : ""}
                                             />
-                                            {low && (
+                                            {low && canEditRows && (
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -631,10 +730,19 @@ export default function EnterGrades() {
             <div className="text-center">
                 <button
                     onClick={saveGrades}
-                    disabled={loading}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-6 py-2 rounded"
+                    disabled={!canSave}
+                    className={`px-6 py-2 rounded text-white ${canSave ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-300 cursor-not-allowed"}`}
+                    title={
+                        !hasName
+                            ? "Enter assessment name"
+                            : nameConflict
+                                ? "Name conflicts with one already used this term"
+                                : !hasAnyScore
+                                    ? "Enter at least one score"
+                                    : ""
+                    }
                 >
-                    {loading ? "Loading..." : "Save Grades Now"}
+                    Save Grades Now
                 </button>
             </div>
         </div>

@@ -353,220 +353,220 @@ ORDER BY start_date
     }
 });
 
-/**
- * GET - Attendance for a class
- */
-router.get("/classes/:classId/attendance", requireLogin, async (req, res) => {
-    const userId = req.session.userID;
-    const { classId } = req.params;
+// /**
+//  * GET - Attendance for a class
+//  */
+// router.get("/classes/:classId/attendance", requireLogin, async (req, res) => {
+//     const userId = req.session.userID;
+//     const { classId } = req.params;
 
-    try {
-        // Verify teacher is the class teacher
-        const isClassTeacher = await db.oneOrNone(
-            `SELECT 1 FROM classes WHERE classid = $1 AND classteacher = $2`,
-            [classId, userId]
-        );
+//     try {
+//         // Verify teacher is the class teacher
+//         const isClassTeacher = await db.oneOrNone(
+//             `SELECT 1 FROM classes WHERE classid = $1 AND classteacher = $2`,
+//             [classId, userId]
+//         );
 
-        if (!isClassTeacher) {
-            return res
-                .status(403)
-                .json({ error: "Only the class teacher can view attendance" });
-        }
+//         if (!isClassTeacher) {
+//             return res
+//                 .status(403)
+//                 .json({ error: "Only the class teacher can view attendance" });
+//         }
 
-        const attendance = await db.any(
-            `SELECT * FROM attendance
-       WHERE classid = $1
-       ORDER BY date DESC`,
-            [classId]
-        );
+//         const attendance = await db.any(
+//             `SELECT * FROM attendance
+//        WHERE classid = $1
+//        ORDER BY date DESC`,
+//             [classId]
+//         );
 
-        res.json(attendance);
-    } catch (err) {
-        console.error("Error fetching attendance:", err);
-        res.status(500).json({ error: "Failed to fetch attendance" });
-    }
-});
+//         res.json(attendance);
+//     } catch (err) {
+//         console.error("Error fetching attendance:", err);
+//         res.status(500).json({ error: "Failed to fetch attendance" });
+//     }
+// });
 
-// GET - Attendance summary for a student (for profile pie chart) 
-router.get("/attendance/student/:childId", requireLogin, async (req, res) => {
-    const { childId } = req.params;
-    const { start_date, end_date } = req.query;
+// // GET - Attendance summary for a student (for profile pie chart) 
+// router.get("/attendance/student/:childId", requireLogin, async (req, res) => {
+//     const { childId } = req.params;
+//     const { start_date, end_date } = req.query;
 
-    try {
-        let query = `
-  SELECT status, COUNT(*) AS count
-  FROM attendance
-  WHERE childid = $1
-`;
-        const params = [childId];
+//     try {
+//         let query = `
+//   SELECT status, COUNT(*) AS count
+//   FROM attendance
+//   WHERE childid = $1
+// `;
+//         const params = [childId];
 
-        if (start_date && end_date) {
-            query += ` AND date >= $2 AND date <= $3`;
-            params.push(start_date, end_date); // Will be $2 and $3 correctly
-        }
+//         if (start_date && end_date) {
+//             query += ` AND date >= $2 AND date <= $3`;
+//             params.push(start_date, end_date); // Will be $2 and $3 correctly
+//         }
 
-        query += ` GROUP BY status`;
+//         query += ` GROUP BY status`;
 
-        const data = await db.any(query, params);
+//         const data = await db.any(query, params);
 
-        let summary = { present: 0, absent: 0, late: 0, "half-day": 0, total: 0 };
+//         let summary = { present: 0, absent: 0, late: 0, "half-day": 0, total: 0 };
 
-        data.forEach((row) => {
-            const statusKey = row.status?.toLowerCase();
-            if (summary.hasOwnProperty(statusKey)) {
-                summary[statusKey] = parseInt(row.count);
-                summary.total += parseInt(row.count);
-            }
-        });
+//         data.forEach((row) => {
+//             const statusKey = row.status?.toLowerCase();
+//             if (summary.hasOwnProperty(statusKey)) {
+//                 summary[statusKey] = parseInt(row.count);
+//                 summary.total += parseInt(row.count);
+//             }
+//         });
 
-        res.json(summary);
-    } catch (err) {
-        console.error("Error fetching student attendance summary:", err);
-        res.status(500).json({ error: "Failed to fetch student attendance summary" });
-    }
-});
+//         res.json(summary);
+//     } catch (err) {
+//         console.error("Error fetching student attendance summary:", err);
+//         res.status(500).json({ error: "Failed to fetch student attendance summary" });
+//     }
+// });
 
-// GET - Attendance trends + stats for a student
-router.get("/attendance/student/:childId/trends", requireLogin, async (req, res) => {
-    const { childId } = req.params;
-    const { start_date, end_date } = req.query;
-    let { groupBy } = req.query;
+// // GET - Attendance trends + stats for a student
+// router.get("/attendance/student/:childId/trends", requireLogin, async (req, res) => {
+//     const { childId } = req.params;
+//     const { start_date, end_date } = req.query;
+//     let { groupBy } = req.query;
 
-    if (!start_date || !end_date) {
-        return res.status(400).json({ error: "Missing start_date or end_date" });
-    }
+//     if (!start_date || !end_date) {
+//         return res.status(400).json({ error: "Missing start_date or end_date" });
+//     }
 
-    // Calculate difference in months
-    const start = new Date(start_date);
-    const end = new Date(end_date);
-    const diffMonths =
-        (end.getFullYear() - start.getFullYear()) * 12 +
-        (end.getMonth() - start.getMonth()) +
-        1;
+//     // Calculate difference in months
+//     const start = new Date(start_date);
+//     const end = new Date(end_date);
+//     const diffMonths =
+//         (end.getFullYear() - start.getFullYear()) * 12 +
+//         (end.getMonth() - start.getMonth()) +
+//         1;
 
-    // Only decide default if user didn't manually select
-    if (!groupBy) {
-        if (diffMonths >= 12) {
-            groupBy = "month"; // year view
-        } else {
-            groupBy = "week"; // term or shorter
-        }
-    }
+//     // Only decide default if user didn't manually select
+//     if (!groupBy) {
+//         if (diffMonths >= 12) {
+//             groupBy = "month"; // year view
+//         } else {
+//             groupBy = "week"; // term or shorter
+//         }
+//     }
 
-    const groupField = groupBy === "month" ? "month" : "week";
+//     const groupField = groupBy === "month" ? "month" : "week";
 
-    try {
-        const rows = await db.any(
-            `
-            WITH periods AS (
-                SELECT generate_series(
-                    DATE_TRUNC($1, $3::date),
-                    DATE_TRUNC($1, $4::date),
-                    CASE WHEN $1 = 'week' THEN '1 week'::interval ELSE '1 month'::interval END
-                ) AS period
-            )
-            SELECT 
-                p.period,
-                TO_CHAR(
-                    p.period,
-                    CASE 
-                        WHEN $1 = 'month' THEN 'Mon YYYY'
-                        ELSE '"Week of" DD Mon YYYY'
-                    END
-                ) AS display_label,
-                COALESCE(a.present, 0) AS present,
-                COALESCE(a.absent, 0) AS absent,
-                COALESCE(a.late, 0) AS late,
-                COALESCE(a.half_day, 0) AS half_day
-            FROM periods p
-            LEFT JOIN (
-                SELECT
-                    DATE_TRUNC($1, date) AS period,
-                    COUNT(*) FILTER (WHERE LOWER(status) = 'present') AS present,
-                    COUNT(*) FILTER (WHERE LOWER(status) = 'absent') AS absent,
-                    COUNT(*) FILTER (WHERE LOWER(status) = 'late') AS late,
-                    COUNT(*) FILTER (WHERE LOWER(status) = 'half-day') AS half_day
-                FROM attendance
-                WHERE childid = $2 AND date BETWEEN $3 AND $4
-                GROUP BY period
-            ) a ON p.period = a.period
-            ORDER BY p.period
-            `,
-            [groupField, childId, start_date, end_date]
-        );
+//     try {
+//         const rows = await db.any(
+//             `
+//             WITH periods AS (
+//                 SELECT generate_series(
+//                     DATE_TRUNC($1, $3::date),
+//                     DATE_TRUNC($1, $4::date),
+//                     CASE WHEN $1 = 'week' THEN '1 week'::interval ELSE '1 month'::interval END
+//                 ) AS period
+//             )
+//             SELECT 
+//                 p.period,
+//                 TO_CHAR(
+//                     p.period,
+//                     CASE 
+//                         WHEN $1 = 'month' THEN 'Mon YYYY'
+//                         ELSE '"Week of" DD Mon YYYY'
+//                     END
+//                 ) AS display_label,
+//                 COALESCE(a.present, 0) AS present,
+//                 COALESCE(a.absent, 0) AS absent,
+//                 COALESCE(a.late, 0) AS late,
+//                 COALESCE(a.half_day, 0) AS half_day
+//             FROM periods p
+//             LEFT JOIN (
+//                 SELECT
+//                     DATE_TRUNC($1, date) AS period,
+//                     COUNT(*) FILTER (WHERE LOWER(status) = 'present') AS present,
+//                     COUNT(*) FILTER (WHERE LOWER(status) = 'absent') AS absent,
+//                     COUNT(*) FILTER (WHERE LOWER(status) = 'late') AS late,
+//                     COUNT(*) FILTER (WHERE LOWER(status) = 'half-day') AS half_day
+//                 FROM attendance
+//                 WHERE childid = $2 AND date BETWEEN $3 AND $4
+//                 GROUP BY period
+//             ) a ON p.period = a.period
+//             ORDER BY p.period
+//             `,
+//             [groupField, childId, start_date, end_date]
+//         );
 
-        // Format data
-        const trends = rows.map(row => ({
-            period: row.period.toISOString().split("T")[0],
-            displayLabel: row.display_label,
-            present: Math.round(row.present),
-            absent: Math.round(row.absent),
-            late: Math.round(row.late),
-            "half-day": Math.round(row.half_day),
-        }));
+//         // Format data
+//         const trends = rows.map(row => ({
+//             period: row.period.toISOString().split("T")[0],
+//             displayLabel: row.display_label,
+//             present: Math.round(row.present),
+//             absent: Math.round(row.absent),
+//             late: Math.round(row.late),
+//             "half-day": Math.round(row.half_day),
+//         }));
 
-        // Calculate stats
-        const totalDays = trends.reduce((sum, row) => sum + row.present + row.absent + row.late + row["half-day"], 0);
-        const presentDays = trends.reduce((sum, row) => sum + row.present, 0);
-        const absentDays = trends.reduce((sum, row) => sum + row.absent, 0);
-        const lateDays = trends.reduce((sum, row) => sum + row.late, 0);
-        const halfDays = trends.reduce((sum, row) => sum + row["half-day"], 0);
+//         // Calculate stats
+//         const totalDays = trends.reduce((sum, row) => sum + row.present + row.absent + row.late + row["half-day"], 0);
+//         const presentDays = trends.reduce((sum, row) => sum + row.present, 0);
+//         const absentDays = trends.reduce((sum, row) => sum + row.absent, 0);
+//         const lateDays = trends.reduce((sum, row) => sum + row.late, 0);
+//         const halfDays = trends.reduce((sum, row) => sum + row["half-day"], 0);
 
-        const attendancePercent = totalDays > 0
-            ? ((presentDays + halfDays * 0.5) / totalDays) * 100
-            : 0;
+//         const attendancePercent = totalDays > 0
+//             ? ((presentDays + halfDays * 0.5) / totalDays) * 100
+//             : 0;
 
-        const stats = {
-            totalDays,
-            present: presentDays,
-            absent: absentDays,
-            late: lateDays,
-            halfDay: halfDays,
-            attendancePercent: attendancePercent.toFixed(1),
-        };
+//         const stats = {
+//             totalDays,
+//             present: presentDays,
+//             absent: absentDays,
+//             late: lateDays,
+//             halfDay: halfDays,
+//             attendancePercent: attendancePercent.toFixed(1),
+//         };
 
-        res.json({ trends, stats, groupBy });
-    } catch (err) {
-        console.error("Error fetching attendance trends + stats:", err);
-        res.status(500).json({ error: "Failed to fetch attendance trends" });
-    }
-});
+//         res.json({ trends, stats, groupBy });
+//     } catch (err) {
+//         console.error("Error fetching attendance trends + stats:", err);
+//         res.status(500).json({ error: "Failed to fetch attendance trends" });
+//     }
+// });
 
-// GET /teacher/attendance/by-date?date=YYYY-MM-DD
-router.get("/attendance/by-date", requireLogin, async (req, res) => {
-    const userId = req.session.userID;
-    const { date } = req.query;
+// // GET /teacher/attendance/by-date?date=YYYY-MM-DD
+// router.get("/attendance/by-date", requireLogin, async (req, res) => {
+//     const userId = req.session.userID;
+//     const { date } = req.query;
 
-    if (!date) {
-        return res.status(400).json({ error: "Missing date" });
-    }
+//     if (!date) {
+//         return res.status(400).json({ error: "Missing date" });
+//     }
 
-    try {
-        // Get class ID where user is class teacher
-        const classData = await db.oneOrNone(
-            `SELECT classid FROM classes WHERE classteacher = $1`,
-            [userId]
-        );
+//     try {
+//         // Get class ID where user is class teacher
+//         const classData = await db.oneOrNone(
+//             `SELECT classid FROM classes WHERE classteacher = $1`,
+//             [userId]
+//         );
 
-        if (!classData) {
-            return res.status(403).json({ error: "You are not a class teacher." });
-        }
+//         if (!classData) {
+//             return res.status(403).json({ error: "You are not a class teacher." });
+//         }
 
-        const records = await db.any(
-            `
-      SELECT childid, status
-      FROM attendance
-      WHERE classid = $1 AND date = $2
-      `,
-            [classData.classid, date]
-        );
+//         const records = await db.any(
+//             `
+//       SELECT childid, status
+//       FROM attendance
+//       WHERE classid = $1 AND date = $2
+//       `,
+//             [classData.classid, date]
+//         );
 
-        res.json(records);
-    } catch (err) {
-        console.error("Error fetching attendance by date:", err);
-        res.status(500).json({ error: "Failed to fetch attendance by date." });
-    }
-});
+//         res.json(records);
+//     } catch (err) {
+//         console.error("Error fetching attendance by date:", err);
+//         res.status(500).json({ error: "Failed to fetch attendance by date." });
+//     }
+// });
 
 
 
@@ -809,63 +809,63 @@ router.get("/dashboard/student-year-overview/:childid", requireLogin, async (req
 });
 
 router.get("/dashboard/student-trend/:childid", requireLogin, async (req, res) => {
-    const userId = req.session.userID;
-    const { childid } = req.params;
-    const { classid, startDate, endDate, subject } = req.query;
+  const userId = req.session.userID;
+  const { childid } = req.params;
+  const { classid, startDate, endDate, subject } = req.query;
 
-    if (!childid || !classid || !startDate || !endDate || !subject) {
-        return res.status(400).json({ error: "Missing required params" });
-    }
+  if (!childid || !classid || !startDate || !endDate || !subject) {
+    return res.status(400).json({ error: "Missing required params" });
+  }
 
-    try {
-        // 1. Check if teacher is allowed for the class
-        const allowed = await db.oneOrNone(
-            `SELECT 1 FROM userclasses WHERE userid = $1 AND classid = $2`,
-            [userId, classid]
-        );
-        if (!allowed) {
-            return res.status(403).json({ error: "Not authorized for this class" });
-        }
+  try {
+    // 1) Ensure teacher can access this class
+    const allowed = await db.oneOrNone(
+      `SELECT 1 FROM userclasses WHERE userid = $1 AND classid = $2`,
+      [userId, classid]
+    );
+    if (!allowed) return res.status(403).json({ error: "Not authorized for this class" });
 
-        // 2. Check if child is part of that class
-        const childClass = await db.oneOrNone(
-            `SELECT 1 FROM childclasses WHERE childid = $1 AND classid = $2`,
-            [childid, classid]
-        );
-        if (!childClass) {
-            return res.status(404).json({ error: "Student not found in class" });
-        }
+    // 2) Ensure student is in this class
+    const childClass = await db.oneOrNone(
+      `SELECT 1 FROM childclasses WHERE childid = $1 AND classid = $2`,
+      [childid, classid]
+    );
+    if (!childClass) return res.status(404).json({ error: "Student not found in class" });
 
-        // 3. Get child name
-        const student = await db.oneOrNone(
-            `SELECT fname, lname FROM children WHERE childid = $1`,
-            [childid]
-        );
+    // 3) Student name
+    const student = await db.one(
+      `SELECT fname, lname FROM children WHERE childid = $1`,
+      [childid]
+    );
 
-        // 4. Get grades for the subject in the date range
-        const grades = await db.any(
-            `SELECT subject, score, max_score, assessment_name, assessment_label, date_entered
-   FROM grades
-   WHERE childid = $1
-     AND classid = $2
-     AND subject = $3
-     AND date_entered >= $4::timestamptz
-     AND date_entered < ($5::date + INTERVAL '1 day')
-   ORDER BY date_entered ASC`,
-            [childid, classid, subject, startDate, endDate]
-        );
+    // 4) Grades (includes comment + assessment_label from grades table)
+    const grades = await db.any(
+      `SELECT
+         subject,
+         score,
+         max_score,
+         assessment_name,
+         assessment_label,     -- must exist in grades
+         comment,              -- must exist in grades
+         date_entered
+       FROM grades
+       WHERE childid = $1
+         AND classid = $2
+         AND subject = $3
+         AND date_entered >= $4::timestamptz
+         AND date_entered < ($5::date + INTERVAL '1 day')
+       ORDER BY date_entered ASC`,
+      [childid, classid, subject, startDate, endDate]
+    );
 
-        res.json({
-            student: {
-                childid,
-                name: `${student.fname} ${student.lname}`
-            },
-            assessments: grades
-        });
-    } catch (err) {
-        console.error("❌ Error in student-trend route:", err);
-        res.status(500).json({ error: "Internal server error" });
-    }
+    return res.json({
+      student: { childid, name: `${student.fname} ${student.lname}` },
+      assessments: grades,   // each row has comment & assessment_label
+    });
+  } catch (err) {
+    console.error("❌ Error in student-trend route:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 /**

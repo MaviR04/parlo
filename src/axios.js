@@ -3,7 +3,7 @@ import axios from "axios";
 
 
 let axiosConfig = {
-  baseURL: "http://13.60.249.224:3001",
+  baseURL: "http://localhost:3001",
   withCredentials: true,
 };
 

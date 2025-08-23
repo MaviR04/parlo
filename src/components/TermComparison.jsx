@@ -28,38 +28,44 @@ ChartJS.register(
     ChartDataLabels
 );
 
-// ✅ Color-coding function
+// Color-coding by % score
 function colorCodeScore(score, max = 100) {
     const percent = (score / max) * 100;
-    if (percent >= 75) return "rgba(34, 197, 94, 0.6)";    // green
-    if (percent >= 50) return "rgba(234, 179, 8, 0.6)";    // yellow
-    return "rgba(239, 68, 68, 0.6)";                       // red
+    if (percent >= 75) return "rgba(34, 197, 94, 0.6)"; // green
+    if (percent >= 50) return "rgba(234, 179, 8, 0.6)"; // yellow
+    return "rgba(239, 68, 68, 0.6)";                      // red
 }
 
-export default function TermComparison({ selectedClass, selectedTerm }) {
+export default function TermComparison({ selectedClass, selectedTerm, selectedSubject }) {
     const [timeline, setTimeline] = useState([]);
     const [loading, setLoading] = useState(true);
     const [modalData, setModalData] = useState(null);
 
     useEffect(() => {
-        if (!selectedClass) return;
+        if (!selectedClass || !selectedTerm || !selectedSubject) return;
         setLoading(true);
-        api.get(`/grades/assessment-timeline/${selectedClass}`)
+        api
+            .get(`/grades/assessment-timeline/${selectedClass}`, {
+                params: {
+                    subject: selectedSubject,
+                    termid: selectedTerm.termid,
+                    mine: 1, // only assessments entered by this teacher
+                },
+            })
             .then((res) => {
-                setTimeline(res.data);
+                setTimeline(res.data || []);
                 setLoading(false);
             })
             .catch((err) => {
                 console.error("❌ Error fetching timeline:", err);
+                setTimeline([]);
                 setLoading(false);
             });
-    }, [selectedClass]);
+    }, [selectedClass, selectedTerm, selectedSubject]);
 
-    const filteredTimeline = timeline.filter(
-        (item) =>
-            item.average !== null &&
-            !isNaN(item.average) &&
-            (!selectedTerm || item.term_name === selectedTerm.name)
+    // Server already filtered; keep only valid numeric averages
+    const filteredTimeline = (timeline || []).filter(
+        (item) => item?.average !== null && !isNaN(item.average)
     );
 
     const chartData = {
@@ -77,12 +83,8 @@ export default function TermComparison({ selectedClass, selectedTerm }) {
                 tension: 0.3,
                 pointRadius: 5,
                 pointHoverRadius: 7,
-                pointBackgroundColor: filteredTimeline.map((item) =>
-                    colorCodeScore(item.average)
-                ),
-                pointBorderColor: filteredTimeline.map((item) =>
-                    colorCodeScore(item.average)
-                ),
+                pointBackgroundColor: filteredTimeline.map((item) => colorCodeScore(item.average)),
+                pointBorderColor: filteredTimeline.map((item) => colorCodeScore(item.average)),
             },
         ],
     };
@@ -90,14 +92,12 @@ export default function TermComparison({ selectedClass, selectedTerm }) {
     const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
-        layout: {
-            padding: { left: 50, right: 70, top: 60, bottom: 40 },
-        },
+        layout: { padding: { left: 50, right: 70, top: 40, bottom: 40 } },
         plugins: {
             legend: { position: "top" },
             title: {
                 display: true,
-                text: "Assessment Score Timeline",
+                text: `Assessment Score Timeline — ${selectedSubject} (${selectedTerm?.name || ""})`,
             },
             tooltip: {
                 backgroundColor: "rgba(33, 33, 33, 0.9)",
@@ -110,7 +110,7 @@ export default function TermComparison({ selectedClass, selectedTerm }) {
                     label: function (context) {
                         const index = context.dataIndex;
                         const point = filteredTimeline[index];
-                        return ` ${point.assessment_label} (${point.term_name}) - ${point.average}%`;
+                        return ` ${point.assessment_label} — ${point.average}%`;
                     },
                 },
             },
@@ -121,10 +121,9 @@ export default function TermComparison({ selectedClass, selectedTerm }) {
                 clip: false,
                 clamp: true,
                 font: { weight: "bold" },
-                formatter: function (value, context) {
-                    const index = context.dataIndex;
-                    const point = filteredTimeline[index];
-                    return `${point.assessment_label} (${point.term_name})\n${point.average}%`;
+                formatter: function (_, context) {
+                    const point = filteredTimeline[context.dataIndex];
+                    return `${point.assessment_label}\n${point.average}%`;
                 },
             },
         },
@@ -137,39 +136,37 @@ export default function TermComparison({ selectedClass, selectedTerm }) {
         scales: {
             x: {
                 type: "time",
-                time: {
-                    unit: "week",
-                    tooltipFormat: "PP",
-                },
-                title: {
-                    display: true,
-                    text: "Date",
-                },
+                time: { unit: "week", tooltipFormat: "PP" },
+                title: { display: true, text: "Date" },
             },
             y: {
-                title: {
-                    display: true,
-                    text: "Average Score (%)",
-                },
+                title: { display: true, text: "Average Score (%)" },
                 min: 0,
                 max: 100,
-                ticks: {
-                    stepSize: 10,
-                },
+                ticks: { stepSize: 10 },
             },
         },
     };
 
-    if (!selectedTerm) {
-        return <p className="text-center text-red-600 mt-6 font-semibold">Please select a term to view data.</p>;
+    if (!selectedClass || !selectedSubject || !selectedTerm) {
+        return (
+            <p className="text-center text-red-600 mt-6 font-semibold">
+                Please select class, subject and term to view data.
+            </p>
+        );
     }
 
-    if (loading) return <p className="text-center mt-4">Loading assessment timeline...</p>;
-
-    if (!filteredTimeline.length) return <p className="text-center mt-4">No data available for this term.</p>;
+    if (loading) return <p className="text-center mt-4">Loading assessment timeline…</p>;
+    if (!filteredTimeline.length)
+        return <p className="text-center mt-4">No data available for this selection.</p>;
 
     return (
         <div className="w-full px-8 py-6 text-gray-800">
+            {/* Page Heading (small, left-aligned) */}
+            <h2 className="text-xl font-semibold mb-4 text-left text-gray-800">
+                Assessment Averages per Term (Click a point to see student marks)
+            </h2>
+
             <div className="mb-10 w-full" style={{ height: "600px" }}>
                 <Line data={chartData} options={chartOptions} />
             </div>

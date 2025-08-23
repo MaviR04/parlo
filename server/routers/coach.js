@@ -33,7 +33,7 @@ router.get("/activities", requireLogin, async (req, res) => {
 
 
 
-// ✅ GET /coach/activities/:id/students (Requires login)
+// GET /coach/activities/:id/students (Requires login)
 router.get("/activities/:id/students", requireLogin, async (req, res) => {
     const activityID = req.params.id;
 

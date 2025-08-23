@@ -253,7 +253,7 @@ export default function StudentReports({ classid, termid, termname }) {
 
             {/* PRINT-ONLY AREA — only this gets printed */}
             {student && (
-                <div id="print-target">
+                <div id="print-target" className="print-area">
                     <div>
                         {/* Main Header */}
                         <div className="print-header">

@@ -245,7 +245,8 @@ export default function MySubjectsPage() {
             {!loading && tab === "term" && (
                 <TermComparison
                     selectedClass={selectedClass}
-                    selectedTerm={selectedTerm} // ✅ ADD THIS LINE
+                    selectedTerm={selectedTerm}
+                    selectedSubject={selectedSubject}
                     selectedAssessment={selectedAssessment}
                     setSelectedAssessment={setSelectedAssessment}
                     grades={grades}

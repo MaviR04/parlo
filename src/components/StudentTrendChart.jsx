@@ -35,7 +35,11 @@ export default function StudentTrendChart({ classid, selectedSubject, selectedTe
     const [selectedStudent, setSelectedStudent] = useState("");
     const [studentData, setStudentData] = useState(null);
 
-    const studentOptions = students.map((s) => ({
+    // modal state
+    const [showModal, setShowModal] = useState(false);
+    const [modalItem, setModalItem] = useState(null); // stores the selected row (assessment)
+
+    const studentOptions = (students || []).map((s) => ({
         value: s.childid,
         label: s.name,
     }));
@@ -68,14 +72,22 @@ export default function StudentTrendChart({ classid, selectedSubject, selectedTe
 
     const chartData = sortedData.map((a) => {
         const color = colorCodeScore(a.score, a.max_score);
+        const labelText = `${a.assessment_label || a.assessment_name} (${a.subject})`;
+        const pct = ((a.score / a.max_score) * 100).toFixed(2);
         return {
             x: new Date(a.date_entered),
-            y: ((a.score / a.max_score) * 100).toFixed(2),
-            label: `${a.assessment_label} (${a.subject})`,
+            y: pct,
+            label: labelText,
             rawScore: a.score,
             maxScore: a.max_score,
             date: formatLongDate(a.date_entered),
             color,
+            // keep originals for modal
+            subject: a.subject,
+            assessment_name: a.assessment_name,
+            assessment_label: a.assessment_label,
+            comment: a.comment, // <- from grades.comment
+            date_raw: a.date_entered,
         };
     });
 
@@ -109,11 +121,7 @@ export default function StudentTrendChart({ classid, selectedSubject, selectedTe
                 callbacks: {
                     label: function (context) {
                         const d = chartData[context.dataIndex];
-                        return [
-                            `${d.label}`,
-                            `Date: ${formatLongDate(d.x)}`,
-                            `Score: ${d.y}%`,
-                        ];
+                        return [`${d.label}`, `Date: ${formatLongDate(d.x)}`, `Score: ${d.y}%`];
                     },
                 },
             },
@@ -123,30 +131,42 @@ export default function StudentTrendChart({ classid, selectedSubject, selectedTe
         },
         scales: {
             y: {
-                title: {
-                    display: true,
-                    text: "Score (%)",
-                },
+                title: { display: true, text: "Score (%)" },
                 min: 0,
                 max: 100,
             },
             x: {
                 title: {
                     display: true,
-                    text: `From ${formatLongDate(selectedTerm.start_date)} to ${formatLongDate(selectedTerm.end_date)} (${selectedTerm.name})`,
+                    text: selectedTerm
+                        ? `From ${formatLongDate(selectedTerm.start_date)} to ${formatLongDate(
+                            selectedTerm.end_date
+                        )} (${selectedTerm.name})`
+                        : "",
                 },
             },
         },
     };
+
+    function openCommentModal(item) {
+        setModalItem(item);
+        setShowModal(true);
+    }
+
+    function closeCommentModal() {
+        setShowModal(false);
+        setModalItem(null);
+    }
 
     return (
         <div className="bg-white p-4 rounded-md shadow w-full max-w-[1600px] mx-auto text-gray-900">
             <label className="block font-semibold mb-2 text-gray-900">Select Student</label>
             <Select
                 options={studentOptions}
-                onChange={(option) => setSelectedStudent(option.value)}
+                onChange={(option) => setSelectedStudent(option?.value || "")}
                 placeholder="Search or select a student..."
                 className="mb-6 text-gray-900"
+                isClearable
             />
 
             {selectedStudent && studentData?.assessments?.length > 0 && (
@@ -154,6 +174,7 @@ export default function StudentTrendChart({ classid, selectedSubject, selectedTe
                     <h3 className="text-xl font-semibold mb-4 text-gray-800">
                         Performance of {studentData.student.name}
                     </h3>
+
                     <Line data={chartConfig} options={chartOptions} className="mb-6" />
 
                     <div className="overflow-x-auto">
@@ -165,25 +186,95 @@ export default function StudentTrendChart({ classid, selectedSubject, selectedTe
                                     <th className="px-4 py-2 text-left">Score</th>
                                     <th className="px-4 py-2 text-left">Max Score</th>
                                     <th className="px-4 py-2 text-left">%</th>
+                                    <th className="px-4 py-2 text-left">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {chartData.map((d, i) => (
-                                    <tr
-                                        key={i}
-                                        className="border-t border-gray-200"
-                                        style={{ backgroundColor: d.color }}
-                                    >
-                                        <td className="px-4 py-2">{d.date}</td>
-                                        <td className="px-4 py-2">{d.label}</td>
-                                        <td className="px-4 py-2">{d.rawScore}</td>
-                                        <td className="px-4 py-2">{d.maxScore}</td>
-                                        <td className="px-4 py-2">{d.y}%</td>
-                                    </tr>
-                                ))}
+                                {chartData.map((d, i) => {
+                                    const hasComment = !!(d.comment && String(d.comment).trim());
+                                    return (
+                                        <tr
+                                            key={i}
+                                            className="border-t border-gray-200"
+                                            style={{ backgroundColor: d.color }}
+                                        >
+                                            <td className="px-4 py-2">{d.date}</td>
+                                            <td className="px-4 py-2">{d.label}</td>
+                                            <td className="px-4 py-2">{d.rawScore}</td>
+                                            <td className="px-4 py-2">{d.maxScore}</td>
+                                            <td className="px-4 py-2">{d.y}%</td>
+                                            <td className="px-4 py-2">
+                                                <button
+                                                    onClick={() => openCommentModal(d)}
+                                                    disabled={!hasComment}
+                                                    className={
+                                                        "px-3 py-1 rounded text-sm border " +
+                                                        (hasComment
+                                                            ? "bg-white text-gray-800 border-gray-400 hover:bg-gray-100"
+                                                            : "bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed")
+                                                    }
+                                                    title={hasComment ? "View comment" : "No comment for this assessment"}
+                                                >
+                                                    View comment
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Modal */}
+                    {showModal && modalItem && (
+                        <div
+                            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                            onClick={closeCommentModal}
+                        >
+                            <div
+                                className="bg-white rounded-lg shadow-xl w-full max-w-xl"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="px-5 py-4 border-b flex items-center justify-between">
+                                    <h5 className="text-lg font-semibold text-gray-900">
+                                        {modalItem.assessment_label || modalItem.assessment_name || "Assessment"} —{" "}
+                                        <span className="text-gray-600">{modalItem.subject}</span>
+                                    </h5>
+                                    <button
+                                        onClick={closeCommentModal}
+                                        className="text-gray-500 hover:text-gray-700"
+                                        aria-label="Close"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <div className="px-5 py-4 space-y-2">
+                                    <p className="text-sm text-gray-600">{modalItem.date}</p>
+                                    <div className="text-sm text-gray-800">
+                                        <span className="font-medium">Score:</span>{" "}
+                                        {modalItem.rawScore}/{modalItem.maxScore} ({modalItem.y}%)
+                                    </div>
+
+                                    <div className="mt-3">
+                                        <div className="text-sm font-medium text-gray-700 mb-1">Comment</div>
+                                        <div className="rounded border bg-gray-50 p-3 text-gray-900 whitespace-pre-wrap">
+                                            {modalItem.comment?.trim() || "—"}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="px-5 py-3 border-t flex justify-end">
+                                    <button
+                                        onClick={closeCommentModal}
+                                        className="px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
 

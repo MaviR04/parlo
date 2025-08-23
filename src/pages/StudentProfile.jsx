@@ -128,33 +128,7 @@ export default function StudentProfile() {
   }, []);
 
   // Fetch attendance data (only on the Attendance tab)
-  useEffect(() => {
-    if (activeTab !== "attendance" || !termId) return;
-    let cancelled = false;
-    async function fetchAttendance() {
-      setLoadingAttendance(true);
-      try {
-        const res = await api.get(`/teacher/attendance/student/${childId}`, {
-          params: {
-            start_date: selectedTerm.start_date,
-            end_date: selectedTerm.end_date,
-          },
-        });
-        if (!cancelled) {
-          setAttendanceData(res.data);
-          setErrorAttendance(null);
-        }
-      } catch {
-        if (!cancelled) setErrorAttendance("Failed to load attendance data");
-      } finally {
-        if (!cancelled) setLoadingAttendance(false);
-      }
-    }
-    fetchAttendance();
-    return () => {
-      cancelled = true;
-    };
-  }, [childId, activeTab, termId]); // depend on termId (stable), not the whole selectedTerm object
+  
 
   if (loadingStudent) return <p>Loading student profile...</p>;
   if (errorStudent) return <p className="text-red-600">{errorStudent}</p>;
