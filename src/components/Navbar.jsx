@@ -41,6 +41,9 @@ function Navbar({ user, setUser }) {
                 <Link to="/teacher" className="hover:text-blue-300">
                   Teacher Calendar
                 </Link>
+                <Link to="/availability" className="hover:text-blue-300">
+                  Availability
+                </Link>
               </>
             )}
             {user.userRole === "Parent" && (
@@ -50,6 +53,9 @@ function Navbar({ user, setUser }) {
                 </Link>
                 <Link to="/calendar" className="hover:text-blue-300">
                   Parent Calendar
+                </Link>
+                <Link to="/meeting-scheduling" classname="hover:text-blue-300">
+                  Meeting Scheduling
                 </Link>
               </>
             )}
