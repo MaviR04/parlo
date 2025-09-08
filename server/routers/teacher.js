@@ -3,6 +3,7 @@ import db from "../db.js";
 import PDFDocument from 'pdfkit';
 import { Readable } from 'stream';
 
+
 const router = express.Router();
 
 // Middleware: Require login
@@ -1615,6 +1616,21 @@ router.get("/classes/my-classes", requireLogin, async (req, res) => {
         );
     }
     res.json(classes);
+});
+
+//below code was added by sandul
+
+router.get("/", async (req, res) => {
+  try {
+    // If teachers are in users table by role
+    const rows = await db.any(
+      "SELECT userid, fname, lname, email FROM users WHERE role = 'Teacher' ORDER BY fname, lname"
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error("GET /teachers error", e);
+    res.status(500).json({ error: "Failed to load teachers" });
+  }
 });
 
 
