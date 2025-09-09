@@ -216,5 +216,71 @@ router.get("/me/roles", requireLogin, async (req, res) => {
   }
 });
 
+function ensureParent(req, res, next) {
+  if (!req.user || req.user.role !== "Parent") {
+    return res.status(403).json({ error: "Only parents allowed" });
+  }
+  next();
+}
+
+
+// Fetch both Teachers and Coaches
+router.get("/",  requireLogin ,async (req, res) => {
+  try {
+    const parentId = req.session.userID;
+    console.log("Parent ID" , parentId)
+    // Get all children of this parent
+    const childrenResult = await db.query(
+      `SELECT childid FROM children WHERE parentid = $1`,
+      [parentId]
+    );
+
+    const children = childrenResult; // always take rows
+    console.log("Parent's children:", children);
+    
+    if (!children || children.length === 0) return res.json({ users: [] });
+
+    const childIds = children.map(c => c.childid);
+    console.log("Parent's children IDs:", childIds);
+    // Get all teachers via classes
+    const classTeachersResult = await db.query(
+      `SELECT DISTINCT u.userid, u.fname, u.lname, u.role, u.email
+       FROM users u
+       INNER JOIN userclasses uc ON uc.userid = u.userid
+       INNER JOIN childclasses cc ON cc.classid = uc.classid
+       WHERE cc.childid = ANY($1)
+         AND (u.role = 'Teacher' OR u.role = 'Coach')`,
+      [childIds]
+    );
+
+    const classTeachers = classTeachersResult;
+    console.log("Fetched class teachers for parent:", classTeachers);
+    // Get all coaches via activities
+    const activityCoachesResult = await db.query(
+      `SELECT DISTINCT u.userid, u.fname, u.lname, u.role, u.email
+       FROM users u
+       INNER JOIN activity_assignments aa ON aa.coachid = u.userid
+       INNER JOIN activity_enrollments ae ON ae.activityid = aa.activityid
+       WHERE ae.childid = ANY($1)
+         AND (u.role = 'Coach' OR u.role = 'Teacher')`,
+      [childIds]
+    );
+
+    const activityCoaches = activityCoachesResult;
+    console.log("Fetched activity coaches for parent:", activityCoaches);
+
+    // Merge without duplicates
+    const allUsersMap = new Map();
+    [...classTeachers, ...activityCoaches].forEach(u => allUsersMap.set(u.userid, u));
+    const users = Array.from(allUsersMap.values());
+    console.log("Fetched teachers/coaches for parent:", users);
+    return res.json({ users });
+  } catch (err) {
+    console.error("Error fetching teachers/coaches:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  } 
+});
+
+
 
 export default router;

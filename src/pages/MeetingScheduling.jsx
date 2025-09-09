@@ -36,7 +36,7 @@ export default function MeetingScheduling({ user }) {
     teacherId: "",
   });
 
-  // teachers
+  // users (both teachers and coaches)
   const [teachers, setTeachers] = useState([]);
   const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [errTeachers, setErrTeachers] = useState("");
@@ -49,24 +49,18 @@ export default function MeetingScheduling({ user }) {
   // selected slot (one)
   const [selectedSlotKey, setSelectedSlotKey] = useState(""); // `${weekday}|${start}|${end}`
 
-  // fetch teachers (DB via backend)
+  // fetch users (both teachers and coaches) from DB via backend
   useEffect(() => {
     const fetchTeachers = async () => {
       setLoadingTeachers(true);
       setErrTeachers("");
       try {
-        // Adjust path to your real endpoint (examples below).
-        // Common options:
-        //  - "/teachers"
-        //  - "/api/teachers"
-        //  - "/users?role=Teacher"
-        const res = await api.get("/teachers", { withCredentials: true });
-        // expected shape: array of { id/ userid, name/ fname+lname, email }
-        const list = Array.isArray(res.data) ? res.data : (res.data?.teachers ?? []);
-        setTeachers(list);
+        const res = await api.get("/users", { withCredentials: true });
+        const list = Array.isArray(res.data) ? res.data : res.data?.users ?? [];
+        setTeachers(list);  // Now both teachers and coaches will be in this list
       } catch (e) {
-        console.error("load teachers error", e);
-        setErrTeachers("Could not load teachers.");
+        console.error("load users error", e);
+        setErrTeachers("Could not load teachers and coaches.");
       } finally {
         setLoadingTeachers(false);
       }
@@ -89,7 +83,6 @@ export default function MeetingScheduling({ user }) {
       setSelectedSlotKey("");
       try {
         // We’ll expose a backend route to read a teacher’s availability by id
-        // GET /availability/for/:teacherId -> [{weekday,start_time,end_time}]
         const res = await api.get(`/availability/for/${tId}`, { withCredentials: true });
         const rows = res.data?.slots ?? res.data ?? [];
         // sort by day + start_time
@@ -149,7 +142,7 @@ export default function MeetingScheduling({ user }) {
     t.name ||
     [t.fname, t.lname].filter(Boolean).join(" ") ||
     t.email ||
-    `Teacher ${t.id || t.userid}`;
+    `${t.role === "Teacher" ? "Teacher" : "Coach"} ${t.id || t.userid}`;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -213,22 +206,22 @@ export default function MeetingScheduling({ user }) {
                 />
               </div>
 
-              {/* Select Teacher */}
+              {/* Select Teacher or Coach */}
               <div>
-                <label className="block text-sm font-medium mb-1">Select Teacher</label>
+                <label className="block text-sm font-medium mb-1">Select Teacher or Coach</label>
                 <div className="flex items-center gap-3">
                   <select
                     className="flex-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     value={form.teacherId}
-                    onChange={(e) => setForm((f) => ({ ...f, teacherId: e.target.value }))}
+                    onChange={(e) => setForm((f) => ({ ...f, teacherId: e.target.value }))} 
                     disabled={loadingTeachers || !!errTeachers}
                   >
                     <option value="">
                       {loadingTeachers
-                        ? "Loading teachers..."
+                        ? "Loading teachers and coaches..."
                         : errTeachers
-                        ? "Error loading teachers"
-                        : "Choose a teacher"}
+                        ? "Error loading teachers and coaches"
+                        : "Choose a teacher or coach"}
                     </option>
                     {teachers.map((t) => (
                       <option
@@ -247,12 +240,12 @@ export default function MeetingScheduling({ user }) {
                       try {
                         setLoadingTeachers(true);
                         setErrTeachers("");
-                        const res = await api.get("/teachers", { withCredentials: true });
-                        const list = Array.isArray(res.data) ? res.data : (res.data?.teachers ?? []);
+                        const res = await api.get("/users", { withCredentials: true });
+                        const list = Array.isArray(res.data) ? res.data : (res.data?.users ?? []);
                         setTeachers(list);
                       } catch (e) {
                         console.error(e);
-                        setErrTeachers("Could not load teachers.");
+                        setErrTeachers("Could not load teachers and coaches.");
                       } finally {
                         setLoadingTeachers(false);
                       }
@@ -272,13 +265,13 @@ export default function MeetingScheduling({ user }) {
                 <label className="block text-sm font-medium mb-2">Available time slots</label>
 
                 {!form.teacherId ? (
-                  <p className="text-sm text-gray-400">Select a teacher to see their availability.</p>
+                  <p className="text-sm text-gray-400">Select a teacher or coach to see their availability.</p>
                 ) : loadingAvail ? (
                   <p className="text-sm text-gray-400">Loading availability…</p>
                 ) : errAvail ? (
                   <p className="text-sm text-red-400">{errAvail}</p>
                 ) : avail.length === 0 ? (
-                  <p className="text-sm text-gray-400">No available slots for this teacher.</p>
+                  <p className="text-sm text-gray-400">No available slots for this teacher/coach.</p>
                 ) : (
                   <div className="space-y-3 max-h-64 overflow-auto pr-1">
                     {groupByDay(avail).map(({ weekday, slots }) => (

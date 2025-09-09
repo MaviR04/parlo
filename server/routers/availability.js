@@ -119,6 +119,32 @@ router.get("/for/:teacherId", async (req, res) => {
   }
 });
 
+// server/routes/availability.js (you can use same logic)
+router.get("/for/:teacherId", async (req, res) => {
+  try {
+    const teacherId = Number(req.params.teacherId);
+    if (!Number.isInteger(teacherId)) {
+      return res.status(400).json({ error: "Invalid teacher id" });
+    }
+    const rows = await db.any(
+      `
+      SELECT weekday,
+             to_char(start_time, 'HH24:MI') AS start_time,
+             to_char(end_time,   'HH24:MI') AS end_time
+      FROM teacher_availability_slots
+      WHERE teacher_id = $1
+      ORDER BY weekday, start_time
+      `,
+      [teacherId]
+    );
+    res.json({ slots: rows });
+  } catch (e) {
+    console.error("GET /availability/for/:teacherId error", e);
+    res.status(500).json({ error: "Failed to load availability" });
+  }
+});
+
+
 
 
 export default router;
