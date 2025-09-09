@@ -122,21 +122,37 @@ export default function MeetingScheduling({ user }) {
       title: form.title.trim(),
       description: form.description.trim(),
       teacherId: form.teacherId,
-      // In the future you’ll likely also add the parentId (from session) server-side
-      requestedSlot: { weekday, start, end }, // "HH:MM"
+      parentId: user.userid, // assuming the logged-in parent ID is in user.userid
+      weekday,
+      start_time: start,
+      end_time: end,
     };
 
-    console.log("PARENT_CREATE_MEETING_PAYLOAD", payload);
+    try {
+      const res = await api.post("/api/meetings", payload, { withCredentials: true });
+      
+      if (res.data?.meeting) {
+        // remove booked slot from available slots immediately
+        setAvail((prev) =>
+          prev.filter(
+            (slot) =>
+              !(slot.weekday === weekday && slot.start_time === start && slot.end_time === end)
+          )
+        );
 
-    // Wire this when your backend is ready:
-    // await api.post("/meetings", payload, { withCredentials: true });
-
-    setShowModal(false);
-    setForm({ title: "", description: "", teacherId: "" });
-    setAvail([]);
-    setSelectedSlotKey("");
-    alert("Meeting request captured in console (backend save not wired yet).");
+        setSelectedSlotKey(""); // clear selection
+        setForm({ title: "", description: "", teacherId: form.teacherId }); // reset form except teacher
+        alert("Meeting successfully booked!");
+      } else {
+        alert("Failed to book meeting");
+      }
+    } catch (err) {
+      console.error("Booking error:", err);
+      alert("Error booking meeting");
+    }
   };
+
+
 
   const teacherDisplay = (t) =>
     t.name ||

@@ -24,6 +24,7 @@ import parentRoutes from "./routers/parent.js";
 import dotenv from 'dotenv';
 import availabilityRouter from "./routers/availability.js";
 import teachersRouter from "./routers/teacher.js";
+import meetingsRouter from "./routers/meetings.js";
 dotenv.config();
 
 
@@ -76,6 +77,8 @@ app.use("/p-behaviour", pBehaviourRouter);
 app.use("/parent", parentRoutes);
 app.use("/availability", availabilityRouter);
 app.use("/teachers", teachersRouter);
+app.use("/api/meetings", meetingsRouter);
+
 
 const server = app.listen(process.env.API_PORT, () => {
   console.log(`API running on Port:${process.env.API_PORT}`)
