@@ -1,78 +1,157 @@
-// routes/meetings.js
+// server/routers/meetings.js
 import express from "express";
 import db from "../db.js";
 
-
 function requireLogin(req, res, next) {
-  if (!req.session.userID) return res.status(401).json({ error: "Not logged in" });
+  if (!req.session?.userID) return res.status(401).json({ error: "Not logged in" });
   next();
 }
 
 const router = express.Router();
 
+/**
+ * POST / - create a meeting and remove the booked slot
+ */
 router.post("/", requireLogin, async (req, res) => {
   try {
-    // Note: The frontend is sending `weekday, start_time, end_time` directly in the payload,
-    // so `requestedSlot` is not needed. The frontend code you provided already does this.
-    const { title, description, teacherId, weekday, start_time, end_time, parentId } = req.body;
+    const {
+      requestedSlot,
+      weekday: bodyWeekday,
+      start_time,
+      end_time,
+      teacherId: rawTeacherId,
+      title,
+      description,
+    } = req.body;
 
-    if (!weekday || !start_time || !end_time) {
-      return res.status(400).json({ message: "Meeting slot details are missing" });
+    const teacherId = Number(rawTeacherId);
+    if (!Number.isInteger(teacherId) || teacherId <= 0) {
+      return res.status(400).json({ message: "Invalid teacherId" });
     }
 
-    const parent_id_from_session = req.session.userID;
-
-    // A security check to ensure the parentId in the payload matches the session user ID
-    if (parentId !== parent_id_from_session) {
-        return res.status(403).json({ message: "Unauthorized action" });
+    let slotWeekday, slotStart, slotEnd;
+    if (requestedSlot) {
+      slotWeekday = Number(requestedSlot.weekday);
+      slotStart = requestedSlot.start;
+      slotEnd = requestedSlot.end;
+    } else {
+      slotWeekday = Number(bodyWeekday);
+      slotStart = start_time;
+      slotEnd = end_time;
     }
 
-    const result = await db.query(
-      `INSERT INTO meetings 
-       (title, description, parent_id, teacher_id, weekday, start_time, end_time)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING *`,
-      [title, description || null, parentId, teacherId, weekday, start_time, end_time]
-    );
+    if (
+      !Number.isInteger(slotWeekday) ||
+      slotWeekday < 0 ||
+      slotWeekday > 6 ||
+      !/^\d{1,2}:\d{2}$/.test(slotStart || "") ||
+      !/^\d{1,2}:\d{2}$/.test(slotEnd || "") ||
+      slotStart >= slotEnd
+    ) {
+      return res.status(400).json({ message: "Invalid slot data" });
+    }
 
-    res.status(201).json({ meeting: result.rows[0], success: true });
+    const parentId = req.session.userID;
+
+    // transaction
+    const result = await db.tx(async (t) => {
+      const meeting = await t.one(
+        `INSERT INTO meetings
+          (title, description, parent_id, teacher_id, weekday, start_time, end_time, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6::time, $7::time, 'Scheduled', NOW())
+         RETURNING *`,
+        [title || null, description || null, parentId, teacherId, slotWeekday, slotStart, slotEnd]
+      );
+
+      const del = await t.result(
+        `DELETE FROM teacher_availability_slots
+         WHERE teacher_id = $1
+           AND weekday = $2
+           AND start_time = $3::time
+           AND end_time = $4::time`,
+        [teacherId, slotWeekday, slotStart, slotEnd]
+      );
+
+      if (!del || del.rowCount === 0) {
+        throw new Error("Selected slot not available");
+      }
+
+      return meeting;
+    });
+
+    return res.status(201).json({ meeting: result, success: true });
   } catch (err) {
-    console.error("Error booking meeting:", err.message);
-    res.status(500).json({ message: "Error booking meeting" });
+    if (err && err.message === "Selected slot not available") {
+      return res.status(400).json({ message: "Selected slot is no longer available" });
+    }
+    console.error("POST /api/meetings error:", err);
+    return res.status(500).json({ message: "Error booking meeting" });
   }
 });
 
-// NEW: GET route to fetch meetings by parentId
-router.get("/parent/:parentId", requireLogin, async (req, res) => {
-    try {
-        const { parentId } = req.params;
-        const parent_id_from_session = req.session.userID;
+/**
+ * GET /mine - list meetings for logged-in parent
+ */
+router.get("/mine", requireLogin, async (req, res) => {
+  try {
+    const parentId = req.session.userID;
+    console.log("Fetching meetings for parent ID:", parentId);
 
-        // Security check: ensure the requested parentId matches the session ID
-        if (parentId !== parent_id_from_session) {
-            return res.status(403).json({ message: "Unauthorized access" });
-        }
+    const rows = await db.any(
+      `SELECT m.*, 
+              u.fname AS teacher_fname, 
+              u.lname AS teacher_lname, 
+              u.email AS teacher_email
+       FROM meetings m
+       JOIN users u ON m.teacher_id = u.userid
+       WHERE m.parent_id = $1
+       ORDER BY m.created_at DESC`,
+      [parentId]
+    );
 
-        const result = await db.query(
-            `SELECT m.*, u.fname, u.lname
-             FROM meetings m
-             JOIN users u ON m.teacher_id = u.userid
-             WHERE m.parent_id = $1
-             ORDER BY m.weekday, m.start_time`,
-            [parentId]
-        );
+    return res.json({ meetings: rows });
+  } catch (err) {
+    console.error("GET /api/meetings/mine error:", err);
+    return res.status(500).json({ message: "Error fetching meetings" });
+  }
+});
 
-        // Map the results to include a full teacher name
-        const meetingsWithTeacherNames = result.rows.map(meeting => ({
-            ...meeting,
-            teacher_name: [meeting.fname, meeting.lname].filter(Boolean).join(" ")
-        }));
-
-        res.status(200).json({ meetings: meetingsWithTeacherNames, success: true });
-    } catch (err) {
-        console.error("Error fetching meetings:", err.message);
-        res.status(500).json({ message: "Error fetching meetings" });
+/**
+ * DELETE /:id - cancel meeting & restore slot
+ */
+router.delete("/:id", requireLogin, async (req, res) => {
+  try {
+    const meetingId = Number(req.params.id);
+    if (!Number.isInteger(meetingId)) {
+      return res.status(400).json({ message: "Invalid meeting ID" });
     }
+
+    const parentId = req.session.userID;
+
+    const result = await db.tx(async (t) => {
+      const meeting = await t.oneOrNone(
+        `SELECT * FROM meetings WHERE id = $1 AND parent_id = $2`,
+        [meetingId, parentId]
+      );
+      if (!meeting) throw new Error("Meeting not found");
+
+      await t.result(`DELETE FROM meetings WHERE id = $1`, [meetingId]);
+
+      await t.none(
+        `INSERT INTO teacher_availability_slots
+          (teacher_id, weekday, start_time, end_time)
+         VALUES ($1, $2, $3::time, $4::time)`,
+        [meeting.teacher_id, meeting.weekday, meeting.start_time, meeting.end_time]
+      );
+
+      return meeting;
+    });
+
+    return res.json({ success: true, restored: result });
+  } catch (err) {
+    console.error("DELETE /api/meetings/:id error:", err);
+    return res.status(500).json({ message: "Error canceling meeting" });
+  }
 });
 
 export default router;

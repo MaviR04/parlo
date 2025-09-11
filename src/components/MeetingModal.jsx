@@ -51,7 +51,6 @@ export default function MeetingModal({ meeting, onClose, onDeleted }) {
         <div className="flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-gray-400 bg-gray-100 hover:bg-gray-200"
           >
             Close
           </button>
