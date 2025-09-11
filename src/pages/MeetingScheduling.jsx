@@ -176,7 +176,7 @@ export default function MeetingScheduling({ user }) {
     }
   };
 
-  const handleDeleteMeeting = async (meetingId) => {
+    const handleDeleteMeeting = async (meetingId) => {
     try {
       await api.delete(`/api/meetings/${meetingId}`, {
         withCredentials: true,
@@ -187,6 +187,7 @@ export default function MeetingScheduling({ user }) {
       console.error("Delete meeting error", e);
     }
   };
+
 
   const teacherDisplay = (t) =>
     t.name ||

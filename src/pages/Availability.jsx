@@ -1,6 +1,7 @@
 // src/pages/Availability.jsx
 import { useEffect, useMemo, useState } from "react";
 import api from "../axios";
+import MeetingModal from "../components/MeetingModal"; // reuse the modal if needed
 
 const DAYS = [
   { label: "Mon", full: "Monday", value: 1 },
@@ -14,13 +15,17 @@ const DAYS = [
 
 export default function Availability({ user }) {
   const [activeDay, setActiveDay] = useState(1); // Monday by default
-  // state shape: { [weekday]: [{start:"HH:MM", end:"HH:MM"}] }
   const [slotsByDay, setSlotsByDay] = useState({});
   const [draft, setDraft] = useState({ start: "", end: "" });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
+  // meetings state
+  const [meetings, setMeetings] = useState([]);
+  const [loadingMeetings, setLoadingMeetings] = useState(false);
+
+  // fetch availability slots
   useEffect(() => {
     const load = async () => {
       try {
@@ -33,7 +38,6 @@ export default function Availability({ user }) {
           (acc[w] ||= []).push({ start: s.start_time, end: s.end_time });
           return acc;
         }, {});
-        // sort each day's slots by start
         for (const k of Object.keys(grouped)) {
           grouped[k].sort((a, b) =>
             a.start < b.start ? -1 : a.start > b.start ? 1 : 0
@@ -48,6 +52,24 @@ export default function Availability({ user }) {
       }
     };
     load();
+  }, []);
+
+  // fetch accepted meetings
+  useEffect(() => {
+    const loadMeetings = async () => {
+      try {
+        setLoadingMeetings(true);
+        const res = await api.get("/availability/my-meetings", {
+          withCredentials: true,
+        });
+        setMeetings(res.data?.meetings || []);
+      } catch (e) {
+        console.error("load meetings error", e);
+      } finally {
+        setLoadingMeetings(false);
+      }
+    };
+    loadMeetings();
   }, []);
 
   const daySlots = slotsByDay[activeDay] || [];
@@ -67,7 +89,6 @@ export default function Availability({ user }) {
 
   const addSlot = () => {
     if (!canAdd) return;
-    // prevent overlap in the same day
     if (daySlots.some((s) => overlaps(s, draft))) {
       alert("This slot overlaps an existing one.");
       return;
@@ -88,7 +109,6 @@ export default function Availability({ user }) {
     try {
       setSaving(true);
       setErr("");
-      // flatten to array that backend expects
       const payload = [];
       for (const [weekdayStr, slots] of Object.entries(slotsByDay)) {
         const weekday = Number(weekdayStr);
@@ -110,17 +130,26 @@ export default function Availability({ user }) {
     }
   };
 
-  if (!["Teacher", "Coach"].includes(user?.userRole)) {
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold">Availability</h1>
-      <p className="text-sm text-gray-600 mt-2">
-        Only teachers and coaches can edit availability.
-      </p>
-    </div>
-  );
-}
+  const deleteMeeting = async (meetingId) => {
+    try {
+      await api.delete(`/meetings/${meetingId}`, { withCredentials: true });
+      setMeetings((prev) => prev.filter((m) => m.meeting_id !== meetingId));
+    } catch (e) {
+      console.error("delete meeting error", e);
+      alert("Could not delete meeting.");
+    }
+  };
 
+  if (!["Teacher", "Coach"].includes(user?.userRole)) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-semibold">Availability</h1>
+        <p className="text-sm text-gray-600 mt-2">
+          Only teachers and coaches can edit availability.
+        </p>
+      </div>
+    );
+  }
 
   const activeDayObj = DAYS.find((d) => d.value === activeDay);
 
@@ -150,13 +179,12 @@ export default function Availability({ user }) {
         ))}
       </div>
 
-      {/* Slot editor for active day */}
+      {/* Slot editor */}
       <div className="rounded-xl border p-4 bg-white">
         <h2 className="font-semibold mb-3 text-gray-900">
           {activeDayObj?.full || activeDayObj?.label} — Time Slots
         </h2>
 
-        {/* Existing slots (tags) */}
         {daySlots.length > 0 ? (
           <ul className="mb-4 flex flex-wrap gap-2">
             {daySlots.map((s, idx) => (
@@ -164,7 +192,9 @@ export default function Availability({ user }) {
                 key={idx}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-100 text-blue-900 font-semibold shadow-sm"
               >
-                <span className="text-sm">{s.start} – {s.end}</span>
+                <span className="text-sm">
+                  {s.start} – {s.end}
+                </span>
                 <button
                   className="text-blue-800 hover:underline text-xs"
                   onClick={() => removeSlot(idx)}
@@ -181,7 +211,6 @@ export default function Availability({ user }) {
           </p>
         )}
 
-        {/* Add slot */}
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
           <div>
             <label className="block text-xs text-gray-700 mb-1">Start</label>
@@ -229,6 +258,40 @@ export default function Availability({ user }) {
           {saving ? "Saving..." : "Confirm & Save"}
         </button>
         {loading && <span className="text-sm text-gray-600">Loading…</span>}
+      </div>
+
+      {/* Meetings list */}
+      <div className="mt-10">
+        <h2 className="text-xl font-semibold mb-4">My Accepted Meetings</h2>
+        {loadingMeetings ? (
+          <p className="text-gray-600">Loading meetings…</p>
+        ) : meetings.length > 0 ? (
+          <div className="space-y-3">
+            {meetings.map((m) => (
+              <div
+                key={m.meeting_id}
+                className="p-4 border rounded-lg shadow-sm bg-gray-50 flex justify-between items-center"
+              >
+                <div>
+                  <p className="font-medium">
+                    With: {m.parent_name || "Parent"}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {m.date} — {m.start_time} to {m.end_time}
+                  </p>
+                </div>
+                <button
+                  onClick={() => deleteMeeting(m.meeting_id)}
+                  className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-600">No accepted meetings yet.</p>
+        )}
       </div>
     </div>
   );

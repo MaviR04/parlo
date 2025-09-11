@@ -14,9 +14,9 @@ export default function MeetingModal({ meeting, onClose, onDeleted }) {
     try {
       setLoading(true);
       setError("");
-      const res = await api.delete(`/api/meetings/${meeting.id}`, { withCredentials: true });
+      const res = await api.delete(`/api/meetings/${meeting.meeting_id}`, { withCredentials: true });
       if (res.data?.success) {
-        onDeleted(meeting.id);
+        onDeleted(meeting.meeting_id);
         onClose();
       } else {
         setError("Failed to cancel meeting");

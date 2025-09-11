@@ -11,6 +11,7 @@ const router = express.Router();
 
 /**
  * POST / - create a meeting and remove the booked slot
+ * (Parents create meetings with teachers/coaches)
  */
 router.post("/", requireLogin, async (req, res) => {
   try {
@@ -90,24 +91,44 @@ router.post("/", requireLogin, async (req, res) => {
 });
 
 /**
- * GET /mine - list meetings for logged-in parent
+ * GET /mine - list meetings for the logged-in user
+ * - Parents: meetings they booked
+ * - Teachers/Coaches: meetings scheduled with them
  */
 router.get("/mine", requireLogin, async (req, res) => {
   try {
-    const parentId = req.session.userID;
-    console.log("Fetching meetings for parent ID:", parentId);
+    const userId = req.session.userID;
+    const role = req.session.role; // assume you store role in session ("parent" | "teacher" | "coach")
 
-    const rows = await db.any(
-      `SELECT m.*, 
-              u.fname AS teacher_fname, 
-              u.lname AS teacher_lname, 
-              u.email AS teacher_email
-       FROM meetings m
-       JOIN users u ON m.teacher_id = u.userid
-       WHERE m.parent_id = $1
-       ORDER BY m.created_at DESC`,
-      [parentId]
-    );
+    let rows = [];
+
+    if (role === "parent") {
+      rows = await db.any(
+        `SELECT m.*, 
+                u.fname AS teacher_fname, 
+                u.lname AS teacher_lname, 
+                u.email AS teacher_email
+         FROM meetings m
+         JOIN users u ON m.teacher_id = u.userid
+         WHERE m.parent_id = $1
+         ORDER BY m.created_at DESC`,
+        [userId]
+      );
+    } else if (role === "teacher" || role === "coach") {
+      rows = await db.any(
+        `SELECT m.*, 
+                p.fname AS parent_fname, 
+                p.lname AS parent_lname, 
+                p.email AS parent_email
+         FROM meetings m
+         JOIN users p ON m.parent_id = p.userid
+         WHERE m.teacher_id = $1
+         ORDER BY m.created_at DESC`,
+        [userId]
+      );
+    } else {
+      return res.status(403).json({ message: "Invalid role" });
+    }
 
     return res.json({ meetings: rows });
   } catch (err) {
@@ -118,6 +139,8 @@ router.get("/mine", requireLogin, async (req, res) => {
 
 /**
  * DELETE /:id - cancel meeting & restore slot
+ * - Parent: can cancel their own meeting
+ * - Teacher/Coach: can cancel meetings with them
  */
 router.delete("/:id", requireLogin, async (req, res) => {
   try {
@@ -126,17 +149,31 @@ router.delete("/:id", requireLogin, async (req, res) => {
       return res.status(400).json({ message: "Invalid meeting ID" });
     }
 
-    const parentId = req.session.userID;
+    const userId = req.session.userID;
+    const role = req.session.role;
 
     const result = await db.tx(async (t) => {
-      const meeting = await t.oneOrNone(
-        `SELECT * FROM meetings WHERE id = $1 AND parent_id = $2`,
-        [meetingId, parentId]
-      );
+      let meeting;
+
+      if (role === "parent") {
+        meeting = await t.oneOrNone(
+          `SELECT * FROM meetings WHERE meeting_id = $1 AND parent_id = $2`,
+          [meetingId, userId]
+        );
+      } else if (role === "teacher" || role === "coach") {
+        meeting = await t.oneOrNone(
+          `SELECT * FROM meetings WHERE meeting_id = $1 AND teacher_id = $2`,
+          [meetingId, userId]
+        );
+      } else {
+        throw new Error("Unauthorized role");
+      }
+
       if (!meeting) throw new Error("Meeting not found");
 
-      await t.result(`DELETE FROM meetings WHERE id = $1`, [meetingId]);
+      await t.result(`DELETE FROM meetings WHERE meeting_id = $1`, [meetingId]);
 
+      // restore slot
       await t.none(
         `INSERT INTO teacher_availability_slots
           (teacher_id, weekday, start_time, end_time)
