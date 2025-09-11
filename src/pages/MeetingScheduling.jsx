@@ -1,4 +1,3 @@
-// src/pages/MeetingScheduling.jsx
 import { useEffect, useMemo, useState } from "react";
 import api from "../axios";
 import { useNavigate } from "react-router-dom";
@@ -20,11 +19,17 @@ function dayLabel(w) {
 export default function MeetingScheduling({ user }) {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  // NEW: State for storing the list of meetings and their loading status
+  const [meetings, setMeetings] = useState([]);
+  const [loadingMeetings, setLoadingMeetings] = useState(false);
+  const [errMeetings, setErrMeetings] = useState("");
+  // NEW: State for the meeting details modal
+  const [showMeetingDetailsModal, setShowMeetingDetailsModal] = useState(false);
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
 
   // parent-only guard
   useEffect(() => {
     if (user?.userRole && user.userRole !== "Parent") {
-      // not a parent — bounce out (or you could hide the nav link already)
       navigate("/", { replace: true });
     }
   }, [user, navigate]);
@@ -57,7 +62,7 @@ export default function MeetingScheduling({ user }) {
       try {
         const res = await api.get("/users", { withCredentials: true });
         const list = Array.isArray(res.data) ? res.data : res.data?.users ?? [];
-        setTeachers(list);  // Now both teachers and coaches will be in this list
+        setTeachers(list);
       } catch (e) {
         console.error("load users error", e);
         setErrTeachers("Could not load teachers and coaches.");
@@ -67,6 +72,28 @@ export default function MeetingScheduling({ user }) {
     };
     fetchTeachers();
   }, []);
+
+  // NEW: useEffect to fetch meetings for the logged-in parent
+  const fetchMeetings = async () => {
+    if (!user?.userid) return;
+    setLoadingMeetings(true);
+    setErrMeetings("");
+    try {
+      // The backend route will be `/api/meetings/parent/:parentId`
+      const res = await api.get(`/api/meetings/parent/${user.userid}`, { withCredentials: true });
+      const meetingsList = Array.isArray(res.data) ? res.data : res.data?.meetings ?? [];
+      setMeetings(meetingsList);
+    } catch (e) {
+      console.error("load meetings error", e);
+      setErrMeetings("Could not load your meetings.");
+    } finally {
+      setLoadingMeetings(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMeetings();
+  }, [user]);
 
   // when teacher changes, fetch availability
   useEffect(() => {
@@ -82,10 +109,8 @@ export default function MeetingScheduling({ user }) {
       setAvail([]);
       setSelectedSlotKey("");
       try {
-        // We’ll expose a backend route to read a teacher’s availability by id
         const res = await api.get(`/availability/for/${tId}`, { withCredentials: true });
         const rows = res.data?.slots ?? res.data ?? [];
-        // sort by day + start_time
         rows.sort((a, b) => {
           const d = Number(a.weekday) - Number(b.weekday);
           if (d !== 0) return d;
@@ -142,6 +167,8 @@ export default function MeetingScheduling({ user }) {
 
         setSelectedSlotKey(""); // clear selection
         setForm({ title: "", description: "", teacherId: form.teacherId }); // reset form except teacher
+        // NEW: Refresh the meetings list after a successful booking
+        fetchMeetings();
         alert("Meeting successfully booked!");
       } else {
         alert("Failed to book meeting");
@@ -152,7 +179,11 @@ export default function MeetingScheduling({ user }) {
     }
   };
 
-
+  // NEW: Function to open the details modal
+  const handleMeetingClick = (meeting) => {
+    setSelectedMeeting(meeting);
+    setShowMeetingDetailsModal(true);
+  };
 
   const teacherDisplay = (t) =>
     t.name ||
@@ -174,7 +205,37 @@ export default function MeetingScheduling({ user }) {
         Create Meeting
       </button>
 
-      {/* Modal */}
+      {/* NEW: Section for displaying the list of meetings */}
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4">Your Created Meetings</h2>
+        {loadingMeetings ? (
+          <p className="text-gray-500">Loading your meetings...</p>
+        ) : errMeetings ? (
+          <p className="text-red-500">{errMeetings}</p>
+        ) : meetings.length === 0 ? (
+          <p className="text-gray-500">You have not created any meetings yet.</p>
+        ) : (
+          <ul className="space-y-4">
+            {meetings.map((meeting) => (
+              <li
+                key={meeting.id}
+                onClick={() => handleMeetingClick(meeting)}
+                className="p-4 border border-gray-200 rounded-lg shadow-sm cursor-pointer hover:bg-gray-100 transition"
+              >
+                <div className="font-medium text-lg">{meeting.title}</div>
+                <div className="text-sm text-gray-600">
+                  With {meeting.teacher_name}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {dayLabel(meeting.weekday)} from {meeting.start_time} to {meeting.end_time}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Modal for creating a meeting (existing) */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           {/* backdrop */}
@@ -229,7 +290,7 @@ export default function MeetingScheduling({ user }) {
                   <select
                     className="flex-1 rounded-lg border border-gray-700 bg-gray-800 text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     value={form.teacherId}
-                    onChange={(e) => setForm((f) => ({ ...f, teacherId: e.target.value }))} 
+                    onChange={(e) => setForm((f) => ({ ...f, teacherId: e.target.value }))}
                     disabled={loadingTeachers || !!errTeachers}
                   >
                     <option value="">
@@ -344,11 +405,53 @@ export default function MeetingScheduling({ user }) {
           </div>
         </div>
       )}
+
+      {/* NEW: Modal for displaying meeting details */}
+      {showMeetingDetailsModal && selectedMeeting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowMeetingDetailsModal(false)}
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-xl shadow-lg p-6 bg-gray-900 text-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Meeting Details</h2>
+              <button
+                className="text-gray-300 hover:text-white"
+                onClick={() => setShowMeetingDetailsModal(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-400">Title</p>
+                <p className="text-lg">{selectedMeeting.title}</p>
+              </div>
+              {selectedMeeting.description && (
+                <div>
+                  <p className="text-sm font-medium text-gray-400">Description</p>
+                  <p>{selectedMeeting.description}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-medium text-gray-400">Teacher</p>
+                <p>{selectedMeeting.teacher_name}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-400">Scheduled Time</p>
+                <p>{dayLabel(selectedMeeting.weekday)}, from {selectedMeeting.start_time} to {selectedMeeting.end_time}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// group availability rows by weekday
+// group availability rows by weekday (existing)
 function groupByDay(rows) {
   const m = new Map();
   for (const r of rows) {
