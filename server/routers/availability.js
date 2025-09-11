@@ -5,10 +5,10 @@ import { requireAuth } from "../middleware/requireAuth.js"; // must set req.user
 
 const router = express.Router();
 
-// Only teachers can manage their own availability
+// Allow Teachers OR Coaches (minimal change from original)
 function requireTeacher(req, res, next) {
-  if (req.user?.userRole !== "Teacher") {
-    return res.status(403).json({ error: "Teachers only" });
+  if (!["Teacher", "Coach"].includes(req.user?.userRole)) {
+    return res.status(403).json({ error: "Teachers or Coaches only" });
   }
   next();
 }
@@ -43,15 +43,20 @@ router.get("/me", requireAuth, requireTeacher, async (req, res) => {
 /**
  * POST /availability/replace
  * Body: { slots: [{ weekday: number (0-6), start: "HH:MM", end: "HH:MM" }, ...] }
- * Replaces ALL availability for the current teacher with the provided set.
+ * Replaces ALL availability for the current teacher/coach with the provided set.
  */
 router.post("/replace", async (req, res) => {
   try {
+    // kept your original session-based logic (minimal change)
     const teacherId = req.session?.userID;
     const role = req.session?.userRole;
 
     if (!teacherId) return res.status(401).json({ error: "Not authenticated" });
-    if (role !== "Teacher") return res.status(403).json({ error: "Teachers only" });
+
+    // *** allow Coach or Teacher here ***
+    if (!["Teacher", "Coach"].includes(role)) {
+      return res.status(403).json({ error: "Teachers or Coaches only" });
+    }
 
     const { slots } = req.body || {};
     if (!Array.isArray(slots)) {
@@ -94,7 +99,10 @@ router.post("/replace", async (req, res) => {
   }
 });
 
-// server/routes/availability.js  (add this alongside your existing routes)
+/**
+ * GET /availability/for/:teacherId
+ * Returns slots for a specific teacher/coach by ID (used in parent scheduling)
+ */
 router.get("/for/:teacherId", async (req, res) => {
   try {
     const teacherId = Number(req.params.teacherId);
@@ -118,33 +126,5 @@ router.get("/for/:teacherId", async (req, res) => {
     res.status(500).json({ error: "Failed to load availability" });
   }
 });
-
-// server/routes/availability.js (you can use same logic)
-router.get("/for/:teacherId", async (req, res) => {
-  try {
-    const teacherId = Number(req.params.teacherId);
-    if (!Number.isInteger(teacherId)) {
-      return res.status(400).json({ error: "Invalid teacher id" });
-    }
-    const rows = await db.any(
-      `
-      SELECT weekday,
-             to_char(start_time, 'HH24:MI') AS start_time,
-             to_char(end_time,   'HH24:MI') AS end_time
-      FROM teacher_availability_slots
-      WHERE teacher_id = $1
-      ORDER BY weekday, start_time
-      `,
-      [teacherId]
-    );
-    res.json({ slots: rows });
-  } catch (e) {
-    console.error("GET /availability/for/:teacherId error", e);
-    res.status(500).json({ error: "Failed to load availability" });
-  }
-});
-
-
-
 
 export default router;

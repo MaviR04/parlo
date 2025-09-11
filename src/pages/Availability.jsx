@@ -110,16 +110,17 @@ export default function Availability({ user }) {
     }
   };
 
-  if (user?.userRole !== "Teacher") {
-    return (
-      <div className="p-6">
-        <h1 className="text-xl font-semibold">Availability</h1>
-        <p className="text-sm text-gray-600 mt-2">
-          Only teachers can edit availability.
-        </p>
-      </div>
-    );
-  }
+  if (!["Teacher", "Coach"].includes(user?.userRole)) {
+  return (
+    <div className="p-6">
+      <h1 className="text-xl font-semibold">Availability</h1>
+      <p className="text-sm text-gray-600 mt-2">
+        Only teachers and coaches can edit availability.
+      </p>
+    </div>
+  );
+}
+
 
   const activeDayObj = DAYS.find((d) => d.value === activeDay);
 

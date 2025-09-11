@@ -6,7 +6,7 @@ function Navbar({ user, setUser }) {
 
   const handleLogout = async () => {
     try {
-      api.post('/auth/logout',{withCredentials:true})
+      await api.post("/auth/logout", {}, { withCredentials: true });
       setUser({});
       navigate("/login");
     } catch (err) {
@@ -33,6 +33,7 @@ function Navbar({ user, setUser }) {
                 Admin Dashboard
               </Link>
             )}
+
             {user.userRole === "Teacher" && (
               <>
                 <Link to="/teacher-dashboard" className="hover:text-blue-300">
@@ -46,6 +47,7 @@ function Navbar({ user, setUser }) {
                 </Link>
               </>
             )}
+
             {user.userRole === "Parent" && (
               <>
                 <Link to="/parent-dashboard" className="hover:text-blue-300">
@@ -54,7 +56,7 @@ function Navbar({ user, setUser }) {
                 <Link to="/calendar" className="hover:text-blue-300">
                   Parent Calendar
                 </Link>
-                <Link to="/meeting-scheduling" classname="hover:text-blue-300">
+                <Link to="/meeting-scheduling" className="hover:text-blue-300">
                   Meeting Scheduling
                 </Link>
               </>
@@ -65,12 +67,15 @@ function Navbar({ user, setUser }) {
                 <Link to="/coach-dashboard" className="hover:text-blue-300">
                   Coach Dashboard
                 </Link>
+                <Link to="/availability" className="hover:text-blue-300">
+                  Availability
+                </Link>
               </>
             )}
 
             <button
               onClick={handleLogout}
-              className="hover:text-blue-300   px-2  rounded"
+              className="hover:text-blue-300 px-2 rounded"
             >
               Logout
             </button>
