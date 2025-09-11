@@ -75,7 +75,8 @@ export default function MeetingScheduling({ user }) {
   }, []);
 
   // load meetings
-  useEffect( async () => {
+  useEffect(() => {
+    const fetchMeetings = async () => {
       try {
         const res = await api.get("/api/meetings/mine", { withCredentials: true });
         setMeetings(res.data?.meetings ?? []);
@@ -83,6 +84,8 @@ export default function MeetingScheduling({ user }) {
       } catch (e) {
         console.error("load meetings error", e);
       }
+    };
+    fetchMeetings();
   }, []);
 
   // teacher availability
@@ -201,7 +204,7 @@ export default function MeetingScheduling({ user }) {
 
       <button
         onClick={() => setShowModal(true)}
-        className="px-5 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700"
+        className="px-5 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors"
       >
         Create Meeting
       </button>
@@ -216,7 +219,7 @@ export default function MeetingScheduling({ user }) {
             {meetings.map((m) => (
               <li
                 key={m.meeting_id}
-                className="p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50"
+                className="p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-white hover:text-black transition-colors"
                 onClick={() => setSelectedMeeting(m)}
               >
                 <div className="font-medium">{m.title || "Untitled"}</div>
@@ -236,7 +239,7 @@ export default function MeetingScheduling({ user }) {
             className="absolute inset-0 bg-black/60"
             onClick={() => setShowModal(false)}
           />
-          <div className="relative z-10 w-full max-w-2xl rounded-xl shadow-lg p-6 bg-gray-900 text-gray-100">
+          <div className="relative z-10 w-full max-w-2xl rounded-xl shadow-lg p-6 bg-gray-900 text-gray-100 hover:bg-white hover:text-black transition-colors">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Create Meeting</h2>
               <button
@@ -248,22 +251,53 @@ export default function MeetingScheduling({ user }) {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Meeting Name */}
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Meeting Name
-                </label>
-                <input
-                  type="text"
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 text-gray-100 px-3 py-2"
-                  placeholder="e.g., Parent–Teacher Check-in"
-                  value={form.title}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, title: e.target.value }))
-                  }
-                />
+              <div className="flex flex-col sm:flex-row sm:space-x-4">
+                {/* Meeting Name */}
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">
+                    Meeting Name
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 text-gray-100 px-3 py-2"
+                    placeholder="e.g., Parent–Teacher Check-in"
+                    value={form.title}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, title: e.target.value }))
+                    }
+                  />
+                </div>
+                {/* Teacher select */}
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">
+                    Select Teacher or Coach
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 text-gray-100 px-3 py-2"
+                    value={form.teacherId}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, teacherId: e.target.value }))
+                    }
+                    disabled={loadingTeachers || !!errTeachers}
+                  >
+                    <option value="">
+                      {loadingTeachers
+                        ? "Loading..."
+                        : errTeachers || "Choose a teacher or coach"}
+                    </option>
+                    {teachers.map((t) => (
+                      <option
+                        key={t.userid || t.id}
+                        value={t.userid || t.id}
+                        className="bg-gray-900"
+                      >
+                        {teacherDisplay(t)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
+              
               {/* Description */}
               <div>
                 <label className="block text-sm font-medium mb-1">
@@ -278,36 +312,6 @@ export default function MeetingScheduling({ user }) {
                     setForm((f) => ({ ...f, description: e.target.value }))
                   }
                 />
-              </div>
-
-              {/* Teacher select */}
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Select Teacher or Coach
-                </label>
-                <select
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 text-gray-100 px-3 py-2"
-                  value={form.teacherId}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, teacherId: e.target.value }))
-                  }
-                  disabled={loadingTeachers || !!errTeachers}
-                >
-                  <option value="">
-                    {loadingTeachers
-                      ? "Loading..."
-                      : errTeachers || "Choose a teacher or coach"}
-                  </option>
-                  {teachers.map((t) => (
-                    <option
-                      key={t.userid || t.id}
-                      value={t.userid || t.id}
-                      className="bg-gray-900"
-                    >
-                      {teacherDisplay(t)}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               {/* Available slots */}
@@ -357,16 +361,16 @@ export default function MeetingScheduling({ user }) {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-800"
+                  className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-800 text-white hover:bg-white hover:text-black transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className={`px-4 py-2 rounded-lg shadow ${
+                  className={`px-4 py-2 rounded-lg shadow transition-colors border border-blue-600 ${
                     canSubmit
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      ? "bg-blue-600 text-white hover:bg-white hover:text-blue-600"
                       : "bg-gray-700 text-gray-400 cursor-not-allowed"
                   }`}
                 >
@@ -383,7 +387,7 @@ export default function MeetingScheduling({ user }) {
         <MeetingModal
           meeting={selectedMeeting}
           onClose={() => setSelectedMeeting(null)}
-          onDelete={() => handleDeleteMeeting(selectedMeeting.meeting_id)}
+          onDeleted={() => handleDeleteMeeting(selectedMeeting.meeting_id)}
         />
       )}
     </div>

@@ -35,10 +35,10 @@ export default function MeetingModal({ meeting, onClose, onDeleted }) {
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       {/* modal box */}
       <div className="relative z-10 w-full max-w-lg rounded-xl shadow-lg p-6 bg-white">
-        <h2 className="text-xl font-semibold mb-4">{meeting.title || "Untitled Meeting"}</h2>
-        <p className="mb-2 text-gray-700">{meeting.description || "No description provided."}</p>
+        <h2 className="text-2xl font-bold mb-4 text-black">{meeting.title || "Untitled Meeting"}</h2>
+        <p className="mb-2 text-black">{meeting.description || "No description provided."}</p>
 
-        <div className="mb-3 text-sm text-gray-600">
+        <div className="mb-3 text-sm text-black">
           <p><strong>Teacher:</strong> {meeting.teacher_fname} {meeting.teacher_lname}</p>
           <p><strong>Email:</strong> {meeting.teacher_email}</p>
           <p><strong>Day:</strong> {meeting.weekday}</p>
@@ -48,16 +48,17 @@ export default function MeetingModal({ meeting, onClose, onDeleted }) {
 
         {error && <p className="text-red-600 mb-3">{error}</p>}
 
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 mt-6">
           <button
             onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-gray-500 text-white hover:bg-white hover:text-black disabled:opacity-50 transition-colors border border-gray-500"
           >
             Close
           </button>
           <button
             onClick={handleDelete}
             disabled={loading}
-            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-white hover:text-red-600 disabled:opacity-50 transition-colors border border-red-600"
           >
             {loading ? "Deleting..." : "Delete Meeting"}
           </button>
