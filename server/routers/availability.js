@@ -105,22 +105,22 @@ router.get("/for/:teacherId", async (req, res) => {
   }
 });
 
-// NEW: GET /availability/my-meetings
+// GET /availability/my-meetings
 router.get("/my-meetings", requireAuth, requireTeacherOrCoach, async (req, res) => {
   try {
     const teacherId = req.user.userid;
     const rows = await db.any(
       `
       SELECT m.meeting_id,
-             m.date,
+             m.weekday,
              to_char(m.start_time, 'HH24:MI') AS start_time,
-             to_char(m.end_time, 'HH24:MI') AS end_time,
-             u.username AS parent_name
+             to_char(m.end_time, 'HH24:MI')   AS end_time,
+             m.status,
+             u.fname || ' ' || u.lname AS parent_name
       FROM meetings m
       JOIN users u ON m.parent_id = u.userid
       WHERE m.teacher_id = $1
-        AND m.status = 'accepted'
-      ORDER BY m.date, m.start_time
+      ORDER BY m.weekday, m.start_time
       `,
       [teacherId]
     );
@@ -130,5 +130,6 @@ router.get("/my-meetings", requireAuth, requireTeacherOrCoach, async (req, res) 
     res.status(500).json({ error: "Failed to load meetings" });
   }
 });
+
 
 export default router;

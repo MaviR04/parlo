@@ -64,7 +64,7 @@ export default function Availability({ user }) {
         });
         setMeetings(res.data?.meetings || []);
       } catch (e) {
-        console.error("load meetings error", e);
+        console.error("load meetings error", e.message);
       } finally {
         setLoadingMeetings(false);
       }
@@ -132,7 +132,7 @@ export default function Availability({ user }) {
 
   const deleteMeeting = async (meetingId) => {
     try {
-      await api.delete(`/meetings/${meetingId}`, { withCredentials: true });
+      await api.delete(`/api/meetings/teacher/${meetingId}`, { withCredentials: true });
       setMeetings((prev) => prev.filter((m) => m.meeting_id !== meetingId));
     } catch (e) {
       console.error("delete meeting error", e);
@@ -277,9 +277,11 @@ export default function Availability({ user }) {
                     With: {m.parent_name || "Parent"}
                   </p>
                   <p className="text-sm text-gray-600">
-                    {m.date} — {m.start_time} to {m.end_time}
+                    {DAYS[m.weekday]?.full || "Unknown"} — {m.start_time} to {m.end_time}
                   </p>
+                  <p className="text-xs text-gray-500">Status: {m.status}</p>
                 </div>
+
                 <button
                   onClick={() => deleteMeeting(m.meeting_id)}
                   className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
