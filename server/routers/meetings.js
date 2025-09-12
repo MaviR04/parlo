@@ -135,6 +135,34 @@ router.delete("/:id", requireLogin, async (req, res) => {
       );
       if (!meeting) throw new Error("Meeting not found");
 
+      // ---- Check if within 6 hours ----
+      const now = new Date();
+
+      // Convert weekday + start_time into the next real datetime
+      const meetingDate = new Date();
+      meetingDate.setHours(
+        parseInt(meeting.start_time.split(":")[0], 10),
+        parseInt(meeting.start_time.split(":")[1], 10),
+        0,
+        0
+      );
+
+      // Adjust to the correct weekday
+      const todayWeekday = meetingDate.getDay(); // 0 = Sunday
+      const targetWeekday = meeting.weekday;
+      let diff = targetWeekday - todayWeekday;
+      if (diff < 0 || (diff === 0 && meetingDate < now)) {
+        diff += 7; // push to next week if already passed today
+      }
+      meetingDate.setDate(meetingDate.getDate() + diff);
+
+      const diffHours = (meetingDate - now) / (1000 * 60 * 60);
+
+      if (diffHours < 6) {
+        throw new Error("Cannot cancel within 6 hours of meeting start time");
+      }
+
+      // ---- Proceed with deletion ----
       await t.result(`DELETE FROM meetings WHERE meeting_id = $1`, [meetingId]);
 
       await t.none(
@@ -149,10 +177,14 @@ router.delete("/:id", requireLogin, async (req, res) => {
 
     return res.json({ success: true, restored: result });
   } catch (err) {
+    if (err.message.includes("Cannot cancel within 6 hours")) {
+      return res.status(403).json({ message: err.message });
+    }
     console.error("DELETE /api/meetings/:id error:", err);
     return res.status(500).json({ message: "Error canceling meeting" });
   }
 });
+
 
 /**
  * DELETE (for teachers)/:id - cancel meeting & restore slot

@@ -24,6 +24,9 @@ export default function MeetingModal({ meeting, onClose, onDeleted }) {
     } catch (err) {
       console.error("Delete meeting error:", err);
       setError("Error canceling meeting");
+      if (403 === err.response?.status) {
+        setError(err.response?.data?.message || "The meeting cannot be canceled within 6 hours of its start time.");
+      }
     } finally {
       setLoading(false);
     }
