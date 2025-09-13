@@ -14,6 +14,10 @@ const DAYS = [
 
 // ------------------ Helper UI Components ------------------
 
+function dayFullName(w) {
+  const n = Number(w);
+ return DAYS.find(d => d.value === n)?.full ?? 'Unknown';
+}
 function DaySelector({ activeDay, setActiveDay }) {
   return (
     <div className="flex flex-wrap gap-2 mb-4">
@@ -74,7 +78,7 @@ function MeetingList({ meetings, deleteMeeting }) {
             <p className="font-medium">With: {m.parent_name || "Parent"}</p>
             <p className="font-medium">{m.description}</p>
             <p className="text-sm">
-              {DAYS[m.weekday]?.full || "Unknown"} — {m.start_time} to {m.end_time}
+             {dayFullName(m.weekday)} — {m.start_time} to {m.end_time}
             </p>
             <p className="text-xs text-gray-600">Status: {m.status}</p>
           </div>
