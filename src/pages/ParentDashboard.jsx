@@ -12,6 +12,11 @@ export default function ParentDashboard({ user }) {
             try {
                 const res = await api.get("/parent/my-children", { withCredentials: true });
                 setChildren(res.data);
+                console.log(res.data)
+                res.data.forEach(child => {
+                    const childComments = api.get(`/p-comments/${child.childid}/6`, {withCredentials: true});
+                    console.log(childComments);
+                });
             } catch (err) {
                 console.error("❌ Failed to load children", err);
                 setError("Failed to load your children list.");

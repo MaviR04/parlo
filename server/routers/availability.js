@@ -112,6 +112,8 @@ router.get("/my-meetings", requireAuth, requireTeacherOrCoach, async (req, res) 
     const rows = await db.any(
       `
       SELECT m.meeting_id,
+            m.title,
+            m.description,
              m.weekday,
              to_char(m.start_time, 'HH24:MI') AS start_time,
              to_char(m.end_time, 'HH24:MI')   AS end_time,

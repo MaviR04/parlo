@@ -70,7 +70,9 @@ function MeetingList({ meetings, deleteMeeting }) {
           className="p-4 border rounded-lg shadow-sm bg-white flex justify-between items-center"
         >
           <div className="text-gray-900">
+            <p className="font-semibold text-xl">{m.title}</p>
             <p className="font-medium">With: {m.parent_name || "Parent"}</p>
+            <p className="font-medium">{m.description}</p>
             <p className="text-sm">
               {DAYS[m.weekday]?.full || "Unknown"} — {m.start_time} to {m.end_time}
             </p>

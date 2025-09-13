@@ -118,7 +118,7 @@ function CalendarApp({user}) {
   
 
   useEffect(()=>{
-    api.get()
+    api.get('/announcement/my')
       .then((res) => {
         console.log(res.data)
         mapColors(res)
