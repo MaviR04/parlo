@@ -8,8 +8,7 @@ const DAYS = [
   { label: "Wed", full: "Wednesday", value: 3 },
   { label: "Thu", full: "Thursday", value: 4 },
   { label: "Fri", full: "Friday", value: 5 },
-  { label: "Sat", full: "Saturday", value: 6 },
-  { label: "Sun", full: "Sunday", value: 0 },
+  
 ];
 
 // ------------------ Helper UI Components ------------------
