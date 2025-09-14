@@ -11,7 +11,7 @@ let axiosConfig = {
 
 if (import.meta.env.VITE_ENV === "prod") {
   axiosConfig = {
-    baseURL: "http://13.60.249.224:3001",
+    baseURL: "http://112.134.131.151",
     withCredentials: true,
   };
 }
