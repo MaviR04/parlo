@@ -4,6 +4,7 @@ import api from "../axios";
 import { useNavigate } from "react-router-dom";
 import MeetingModal from "../components/MeetingModal";
 
+
 const DAYS = [
   { value: 0, label: "Sun" },
   { value: 1, label: "Mon" },
@@ -168,8 +169,8 @@ export default function MeetingScheduling({ user }) {
         setForm({ title: "", description: "", teacherId: form.teacherId });
         setSelectedSlotKey("");
         setShowModal(false);
-
         setMeetings((prev) => [...prev, res.data.meeting]);
+
       }
     } catch (err) {
       console.error("Booking error:", err);
@@ -200,7 +201,7 @@ export default function MeetingScheduling({ user }) {
       <h1 className="text-2xl font-semibold mb-4">Meeting Scheduling</h1>
       <p className="text-gray-700 mb-6">
         Create a meeting request by selecting a teacher and one of their
-        available time slots.
+        available time slots. 
       </p>
 
       <button
@@ -216,20 +217,23 @@ export default function MeetingScheduling({ user }) {
         {meetings.length === 0 ? (
           <p className="text-gray-500">No meetings booked yet.</p>
         ) : (
-          <ul className="space-y-2">
-            {meetings.map((m) => (
-              <li
-                key={m.meeting_id}
-                className="p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-white hover:text-black transition-colors"
-                onClick={() => setSelectedMeeting(m)}
-              >
-                <div className="font-medium">{m.title || "Untitled"}</div>
-                <div className="text-sm text-gray-600">
-                  {dayLabel(m.weekday)} {m.start_time} – {m.end_time}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div>
+            <p className="text-gray-500 mb-2">Please note that cancellations may only happen 6 hours in advance</p>
+            <ul className="space-y-2">
+              {meetings.map((m) => (
+                <li
+                  key={m.meeting_id}
+                  className="p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-white hover:text-black transition-colors"
+                  onClick={() => setSelectedMeeting(m)}
+                >
+                  <div className="font-medium">{m.title || "Untitled"}</div>
+                  <div className="text-sm text-gray-600">
+                    {dayLabel(m.weekday)} {m.start_time} – {m.end_time}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
@@ -240,7 +244,7 @@ export default function MeetingScheduling({ user }) {
             className="absolute inset-0 bg-black/60"
             onClick={() => setShowModal(false)}
           />
-          <div className="relative z-10 w-full max-w-2xl rounded-xl shadow-lg p-6 bg-gray-900 text-gray-100 hover:bg-white hover:text-black transition-colors">
+          <div className="relative z-10 w-full max-w-2xl rounded-xl shadow-lg p-6 bg-gray-900 text-gray-100 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Create Meeting</h2>
               <button
