@@ -44,7 +44,7 @@ if(process.env.ENV == "prod"){
 
 
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: ['http://localhost:5173','http://112.134.131.151'],
   credentials: true
 }))
 
