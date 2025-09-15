@@ -473,7 +473,7 @@ useEffect(() => {
               />
             </div>
           )}
-
+  
           {showFullView && (
             <div style={{ overflowX: "auto" }}>
               <Line

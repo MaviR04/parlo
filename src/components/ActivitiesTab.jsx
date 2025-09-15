@@ -5,9 +5,9 @@ import "chart.js/auto";
 
 export default function ActivitiesTab({ childId, termId }) {
     const subTabs = ["overview", "progress", "badges", "logs"];
-    const [activeSubTab, setActiveSubTab] = useState("overview");
+    const [activeSubTab, setActiveSubTab] = useState("overview");   
 
-    // Overview data
+    // Overview data  
     const [overviewData, setOverviewData] = useState(null);
     const [loadingOverview, setLoadingOverview] = useState(false);
     const [errorOverview, setErrorOverview] = useState(null);
