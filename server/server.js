@@ -25,6 +25,7 @@ import dotenv from 'dotenv';
 import availabilityRouter from "./routers/availability.js";
 import teachersRouter from "./routers/teacher.js";
 import meetingsRouter from "./routers/meetings.js";
+import trackingRouter from './routers/tracking.js' 
 dotenv.config();
 
 
@@ -78,6 +79,7 @@ app.use("/parent", parentRoutes);
 app.use("/availability", availabilityRouter);
 app.use("/teachers", teachersRouter);
 app.use("/api/meetings", meetingsRouter);
+app.use("/tracking",trackingRouter);
 
 
 const server = app.listen(process.env.API_PORT, () => {

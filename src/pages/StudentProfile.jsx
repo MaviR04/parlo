@@ -9,6 +9,16 @@ import ActivitiesTab from "../components/ActivitiesTab";
 import GenCommentsTab from "../components/GenCommentsTab";
 
 /* --- Simple error boundary so the page never goes fully blank --- */
+function trackEvent( eventName, classification, eventData = {}) {
+  console.log("event tracked")
+  return api.post("/tracking", {
+    event_name: eventName,
+    classification,
+    event_data: eventData,
+  });
+  
+}
+
 function ErrorBoundary({ children }) {
   const [err, setErr] = useState(null);
   if (err) {
@@ -196,29 +206,29 @@ export default function StudentProfile() {
 
         {/* Behaviour Tab */}
         {activeTab === "behaviour" && termId && (
-          <div key={`behaviour-${termId}`}>
+          <div key={`behaviour-${termId}` }>
             <BehaviourResults childId={childId} termId={termId} />
           </div>
         )}
 
         {/* Academics Tab */}
         {activeTab === "academic" && termId && (
-          <div key={`academic-${termId}`}>
+          <div key={`academic-${termId}`}  onClick={()=>{trackEvent('click_event','goal_oriented',{ action: "clicked_on_academic_tab" })}}>
             <AcademicsTab childId={childId} termId={termId} />
           </div>
         )}
 
         {/* Activities Tab */}
         {activeTab === "activities" && termId && (
-          <div key={`activities-${termId}`}>
-            <ActivitiesTab childId={childId} termId={termId} />
+          <div key={`activities-${termId}`} onClick={()=>{trackEvent('click_event','holistic',{ action: "clicked_on_activities_tab" })}}>
+            <ActivitiesTab childId={childId} termId={termId}  />
           </div>
         )}
 
         {/* Comments Tab */}
         {activeTab === "comments" && termId && (
-          <div key={`comments-${termId}`}>
-            <GenCommentsTab childId={childId} termId={termId} />
+          <div key={`comments-${termId}`} onClick={()=>{trackEvent('click_event','holistic',{action:'clicked_on_comments_tab'})}}>
+            <GenCommentsTab childId={childId} termId={termId}  />
           </div>
         )}
       </ErrorBoundary>

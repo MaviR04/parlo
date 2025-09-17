@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import api from "../axios";
 import { Link } from "react-router-dom";
 import BadgesTab from "../components/Activities/tabs/BadgesTab"
+import InsightsTab from "../components/academics/InsightsTab";
 
 export default function ParentDashboard({ user }) {
     const [children, setChildren] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [comments, setCommments] = useState(null);
+    const [designation, setDesignation] = useState("goal_oriented")
 
     useEffect(() => {
         async function fetchChildren() {
@@ -35,6 +37,15 @@ export default function ParentDashboard({ user }) {
         }
         fetchChildren();
     }, []);
+
+    useEffect( ()=>{
+       async ()=>{
+            const res =  await api.get("/tracking/designation")
+            console.log(res.data.designation);
+            setDesignation(res.data.designation);
+        }
+      
+    },[])
 
 
     if (loading) return <p className="text-center mt-10">Loading your children...</p>;
@@ -64,6 +75,7 @@ export default function ParentDashboard({ user }) {
                     </div>
                 )}
             </div>
+           {designation == "goal_oriented" ?  <InsightsTab childId={children[0].childid} termId={6}/> : 
             <div className="grid grid-cols-2 gap-10 p-2">
                <div className=" shadow-md rounded-2xl">                 
                     <h1 className="text-2xl bg-blue-400 font-semibold p-2 rounded-t-2xl text-white">Recent Comments about your children</h1>
@@ -90,7 +102,7 @@ export default function ParentDashboard({ user }) {
                     <BadgesTab childId={children[0].childid} termId={6} />
                 </div>
             </div>
-
+                }
         </div>
     );
 }
