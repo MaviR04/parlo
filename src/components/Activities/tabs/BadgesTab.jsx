@@ -6,7 +6,7 @@ export default function BadgesTab({ childId, termId }) {
   return (
     <div className="shadow-lg rounded-2xl border-1">
       <h2 className="text-2xl text-white bg-blue-400 font-semibold mb-6 rounded-t-2xl p-2 ">Badges Earned</h2> 
-      <div className=" bg-orange-400 bg-yellow-400 bg-red-300"></div>
+      <div className=" bg-orange-400 bg-yellow-400 bg-green-400 bg-teal-400 bg-red-300 bg-green-300"></div>
       <div className="px-4 pb-2 pt-2">          
         {loading ? <p>Loading badges…</p> :
           !data || Object.keys(data).length === 0 ? <p className="text-gray-500 italic">No badges earned this term.</p> :

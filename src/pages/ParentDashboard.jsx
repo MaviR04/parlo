@@ -39,12 +39,12 @@ export default function ParentDashboard({ user }) {
     }, []);
 
     useEffect( ()=>{
-       async ()=>{
+       async function FetchDesignation(){
             const res =  await api.get("/tracking/designation")
             console.log(res.data.designation);
             setDesignation(res.data.designation);
         }
-      
+        FetchDesignation();
     },[])
 
 
@@ -79,7 +79,7 @@ export default function ParentDashboard({ user }) {
             <div className="grid grid-cols-2 gap-10 p-2">
                <div className=" shadow-md rounded-2xl">                 
                     <h1 className="text-2xl bg-blue-400 font-semibold p-2 rounded-t-2xl text-white">Recent Comments about your children</h1>
-                    <div className=" text-black flex gap-4 p-4">
+                    <div className=" text-black flex flex-wrap gap-4 p-4">
                         
                         {
                             comments ?
