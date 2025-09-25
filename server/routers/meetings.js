@@ -209,11 +209,11 @@ router.delete("/teacher/:id", requireLogin, async (req, res) => {
       );
       if (!meeting) throw new Error("Meeting not found");
 
-      // Insert into cancellations table using your columns
+      // Insert into cancellations table with the reason
       await t.none(
         `INSERT INTO cancellations
-          (cancelled_by, other_party, title, description, weekday, start_time, end_time, cancelled_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          (cancelled_by, other_party, title, description, weekday, start_time, end_time, reason, cancelled_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
         [
           userId,
           meeting.parent_id,
@@ -222,6 +222,7 @@ router.delete("/teacher/:id", requireLogin, async (req, res) => {
           meeting.weekday,
           meeting.start_time,
           meeting.end_time,
+          reason,
         ]
       );
 
@@ -245,6 +246,7 @@ router.delete("/teacher/:id", requireLogin, async (req, res) => {
     return res.status(500).json({ message: err.message || "Error canceling meeting" });
   }
 });
+
 
 
 

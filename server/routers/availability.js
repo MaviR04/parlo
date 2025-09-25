@@ -134,4 +134,47 @@ router.get("/my-meetings", requireAuth, requireTeacherOrCoach, async (req, res) 
 });
 
 
+// Fetch cancelled meetings for the logged-in teacher/coach
+router.get("/my-cancellations", requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userID;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    console.log("Fetching cancellations for userID:", userId);
+
+    const cancellations = await db.any(
+      `SELECT c.cancellation_id, c.reason, c.cancelled_by, u.fname, u.lname
+       FROM cancellations c
+       JOIN users u ON c.cancelled_by = u.userid
+       WHERE c.cancelled_by = $1 OR c.other_party = $1
+       ORDER BY c.cancelled_at DESC`,
+      [userId]
+    );
+
+    res.json({ cancellations });
+  } catch (err) {
+    console.error("GET /my-cancellations error:", err);
+    res.status(500).json({ message: "Failed to fetch cancelled meetings" });
+  }
+});
+
+
+// Delete a cancellation record (dismiss)
+router.delete("/cancellations/:id", requireAuth, async (req, res) => {
+  try {
+    const cancellationId = Number(req.params.id);
+    if (!Number.isInteger(cancellationId)) {
+      return res.status(400).json({ message: "Invalid cancellation ID" });
+    }
+
+    await db.none("DELETE FROM cancellations WHERE cancellation_id = $1", [cancellationId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DELETE /cancellations/:id error:", err);
+    res.status(500).json({ message: "Failed to delete cancellation" });
+  }
+});
+
+
+
 export default router;

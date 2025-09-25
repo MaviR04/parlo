@@ -93,6 +93,32 @@ function MeetingList({ meetings, deleteMeeting }) {
   );
 }
 
+function CancelledMeetingList({ cancelled, dismiss }) {
+  if (cancelled.length === 0) return <p className="text-white">No cancelled meetings.</p>;
+
+  return (
+    <div className="space-y-3">
+      {cancelled.map((c) => (
+        <div
+          key={c.cancellation_id}
+          className="p-4 border rounded-lg shadow-sm bg-gray-800 flex justify-between items-center"
+        >
+          <div className="text-white">
+            <p className="font-semibold">Cancelled by: {c.fname} {c.lname}</p>
+            <p className="text-sm">Reason: {c.reason}</p>
+          </div>
+          <button
+            onClick={() => dismiss(c.cancellation_id)}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ------------------ Main Component ------------------
 
 export default function Availability({ user }) {
@@ -105,6 +131,9 @@ export default function Availability({ user }) {
 
   const [meetings, setMeetings] = useState([]);
   const [loadingMeetings, setLoadingMeetings] = useState(false);
+
+  const [cancelled, setCancelled] = useState([]);
+  const [loadingCancelled, setLoadingCancelled] = useState(false);
 
   // -------- Fetch availability slots --------
   useEffect(() => {
@@ -148,6 +177,22 @@ export default function Availability({ user }) {
       }
     };
     loadMeetings();
+  }, []);
+
+  // -------- Fetch cancelled meetings --------
+  useEffect(() => {
+    const loadCancelled = async () => {
+      try {
+        setLoadingCancelled(true);
+        const res = await api.get("/availability/my-cancellations", { withCredentials: true });
+        setCancelled(res.data?.cancellations || []);
+      } catch (e) {
+        console.error("load cancelled meetings error", e);
+      } finally {
+        setLoadingCancelled(false);
+      }
+    };
+    loadCancelled();
   }, []);
 
   const daySlots = slotsByDay[activeDay] || [];
@@ -199,15 +244,27 @@ export default function Availability({ user }) {
     try {
       await api.delete(`/api/meetings/teacher/${meetingId}`, {
         withCredentials: true,
-        data: { reason }, // DELETE body must be under 'data'
+        data: { reason },
       });
 
-      // Remove meeting from state
       setMeetings((prev) => prev.filter((m) => m.meeting_id !== meetingId));
       alert("Meeting cancelled successfully.");
     } catch (e) {
       console.error("delete meeting error", e);
       alert("Could not delete meeting.");
+    }
+  };
+
+  // -------- Dismiss cancelled meeting --------
+  const dismissCancelled = async (id) => {
+    if (!window.confirm("Are you sure you want to dismiss this cancelled meeting?")) return;
+
+    try {
+      await api.delete(`/availability/cancellations/${id}`, { withCredentials: true });
+      setCancelled((prev) => prev.filter((c) => c.cancellation_id !== id));
+    } catch (e) {
+      console.error("dismiss cancelled error", e);
+      alert("Could not dismiss cancelled meeting.");
     }
   };
 
@@ -301,7 +358,11 @@ export default function Availability({ user }) {
       {/* Cancelled Meetings list */}
       <div className="mt-10">
         <h2 className="text-xl font-semibold mb-4 text-white">My Cancelled Meetings</h2>
-        {/* Future: pull cancelled meetings from cancellations table */}
+        {loadingCancelled ? (
+          <p className="text-white">Loading cancelled meetings…</p>
+        ) : (
+          <CancelledMeetingList cancelled={cancelled} dismiss={dismissCancelled} />
+        )}
       </div>
     </div>
   );
