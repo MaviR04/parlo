@@ -8,15 +8,15 @@ const DAYS = [
   { label: "Wed", full: "Wednesday", value: 3 },
   { label: "Thu", full: "Thursday", value: 4 },
   { label: "Fri", full: "Friday", value: 5 },
-  
 ];
 
 // ------------------ Helper UI Components ------------------
 
 function dayFullName(w) {
   const n = Number(w);
- return DAYS.find(d => d.value === n)?.full ?? 'Unknown';
+  return DAYS.find(d => d.value === n)?.full ?? 'Unknown';
 }
+
 function DaySelector({ activeDay, setActiveDay }) {
   return (
     <div className="flex flex-wrap gap-2 mb-4">
@@ -139,9 +139,7 @@ export default function Availability({ user }) {
     const loadMeetings = async () => {
       try {
         setLoadingMeetings(true);
-        const res = await api.get("/availability/my-meetings", {
-          withCredentials: true,
-        });
+        const res = await api.get("/availability/my-meetings", { withCredentials: true });
         setMeetings(res.data?.meetings || []);
       } catch (e) {
         console.error("load meetings error", e.message);
@@ -193,10 +191,20 @@ export default function Availability({ user }) {
     }
   };
 
+  // -------- Delete meeting --------
   const deleteMeeting = async (meetingId) => {
+    const reason = prompt("Please enter a reason for cancelling this meeting:");
+    if (!reason) return;
+
     try {
-      await api.delete(`/api/meetings/teacher/${meetingId}`, { withCredentials: true });
+      await api.delete(`/api/meetings/teacher/${meetingId}`, {
+        withCredentials: true,
+        data: { reason }, // DELETE body must be under 'data'
+      });
+
+      // Remove meeting from state
       setMeetings((prev) => prev.filter((m) => m.meeting_id !== meetingId));
+      alert("Meeting cancelled successfully.");
     } catch (e) {
       console.error("delete meeting error", e);
       alert("Could not delete meeting.");
@@ -288,6 +296,12 @@ export default function Availability({ user }) {
         ) : (
           <MeetingList meetings={meetings} deleteMeeting={deleteMeeting} />
         )}
+      </div>
+
+      {/* Cancelled Meetings list */}
+      <div className="mt-10">
+        <h2 className="text-xl font-semibold mb-4 text-white">My Cancelled Meetings</h2>
+        {/* Future: pull cancelled meetings from cancellations table */}
       </div>
     </div>
   );
