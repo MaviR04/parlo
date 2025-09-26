@@ -8,15 +8,15 @@ const DAYS = [
   { label: "Wed", full: "Wednesday", value: 3 },
   { label: "Thu", full: "Thursday", value: 4 },
   { label: "Fri", full: "Friday", value: 5 },
-  
 ];
 
 // ------------------ Helper UI Components ------------------
 
 function dayFullName(w) {
   const n = Number(w);
- return DAYS.find(d => d.value === n)?.full ?? 'Unknown';
+  return DAYS.find(d => d.value === n)?.full ?? 'Unknown';
 }
+
 function DaySelector({ activeDay, setActiveDay }) {
   return (
     <div className="flex flex-wrap gap-2 mb-4">
@@ -93,6 +93,32 @@ function MeetingList({ meetings, deleteMeeting }) {
   );
 }
 
+function CancelledMeetingList({ cancelled, dismiss }) {
+  if (cancelled.length === 0) return <p className="text-white">No cancelled meetings.</p>;
+
+  return (
+    <div className="space-y-3">
+      {cancelled.map((c) => (
+        <div
+          key={c.cancellation_id}
+          className="p-4 border rounded-lg shadow-sm bg-gray-800 flex justify-between items-center"
+        >
+          <div className="text-white">
+            <p className="font-semibold">Cancelled by: {c.fname} {c.lname}</p>
+            <p className="text-sm">Reason: {c.reason}</p>
+          </div>
+          <button
+            onClick={() => dismiss(c.cancellation_id)}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ------------------ Main Component ------------------
 
 export default function Availability({ user }) {
@@ -105,6 +131,9 @@ export default function Availability({ user }) {
 
   const [meetings, setMeetings] = useState([]);
   const [loadingMeetings, setLoadingMeetings] = useState(false);
+
+  const [cancelled, setCancelled] = useState([]);
+  const [loadingCancelled, setLoadingCancelled] = useState(false);
 
   // -------- Fetch availability slots --------
   useEffect(() => {
@@ -139,9 +168,7 @@ export default function Availability({ user }) {
     const loadMeetings = async () => {
       try {
         setLoadingMeetings(true);
-        const res = await api.get("/availability/my-meetings", {
-          withCredentials: true,
-        });
+        const res = await api.get("/availability/my-meetings", { withCredentials: true });
         setMeetings(res.data?.meetings || []);
       } catch (e) {
         console.error("load meetings error", e.message);
@@ -150,6 +177,22 @@ export default function Availability({ user }) {
       }
     };
     loadMeetings();
+  }, []);
+
+  // -------- Fetch cancelled meetings --------
+  useEffect(() => {
+    const loadCancelled = async () => {
+      try {
+        setLoadingCancelled(true);
+        const res = await api.get("/availability/my-cancellations", { withCredentials: true });
+        setCancelled(res.data?.cancellations || []);
+      } catch (e) {
+        console.error("load cancelled meetings error", e);
+      } finally {
+        setLoadingCancelled(false);
+      }
+    };
+    loadCancelled();
   }, []);
 
   const daySlots = slotsByDay[activeDay] || [];
@@ -193,13 +236,35 @@ export default function Availability({ user }) {
     }
   };
 
+  // -------- Delete meeting --------
   const deleteMeeting = async (meetingId) => {
+    const reason = prompt("Please enter a reason for cancelling this meeting:");
+    if (!reason) return;
+
     try {
-      await api.delete(`/api/meetings/teacher/${meetingId}`, { withCredentials: true });
+      await api.delete(`/api/meetings/teacher/${meetingId}`, {
+        withCredentials: true,
+        data: { reason },
+      });
+
       setMeetings((prev) => prev.filter((m) => m.meeting_id !== meetingId));
+      alert("Meeting cancelled successfully.");
     } catch (e) {
       console.error("delete meeting error", e);
       alert("Could not delete meeting.");
+    }
+  };
+
+  // -------- Dismiss cancelled meeting --------
+  const dismissCancelled = async (id) => {
+    if (!window.confirm("Are you sure you want to dismiss this cancelled meeting?")) return;
+
+    try {
+      await api.delete(`/availability/cancellations/${id}`, { withCredentials: true });
+      setCancelled((prev) => prev.filter((c) => c.cancellation_id !== id));
+    } catch (e) {
+      console.error("dismiss cancelled error", e);
+      alert("Could not dismiss cancelled meeting.");
     }
   };
 
@@ -287,6 +352,16 @@ export default function Availability({ user }) {
           <p className="text-white">Loading meetings…</p>
         ) : (
           <MeetingList meetings={meetings} deleteMeeting={deleteMeeting} />
+        )}
+      </div>
+
+      {/* Cancelled Meetings list */}
+      <div className="mt-10">
+        <h2 className="text-xl font-semibold mb-4 text-white">My Cancelled Meetings</h2>
+        {loadingCancelled ? (
+          <p className="text-white">Loading cancelled meetings…</p>
+        ) : (
+          <CancelledMeetingList cancelled={cancelled} dismiss={dismissCancelled} />
         )}
       </div>
     </div>
