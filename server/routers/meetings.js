@@ -127,6 +127,9 @@ router.delete("/:id", requireLogin, async (req, res) => {
     }
 
     const parentId = req.session.userID;
+    const { reason } = req.body;
+
+    if (!reason) return res.status(400).json({ message: "Cancellation reason is required" });
 
     const result = await db.tx(async (t) => {
       const meeting = await t.oneOrNone(
@@ -138,7 +141,6 @@ router.delete("/:id", requireLogin, async (req, res) => {
       // ---- Check if within 6 hours ----
       const now = new Date();
 
-      // Convert weekday + start_time into the next real datetime
       const meetingDate = new Date();
       meetingDate.setHours(
         parseInt(meeting.start_time.split(":")[0], 10),
@@ -147,7 +149,6 @@ router.delete("/:id", requireLogin, async (req, res) => {
         0
       );
 
-      // Adjust to the correct weekday
       const todayWeekday = meetingDate.getDay(); // 0 = Sunday
       const targetWeekday = meeting.weekday;
       let diff = targetWeekday - todayWeekday;
@@ -162,9 +163,27 @@ router.delete("/:id", requireLogin, async (req, res) => {
         throw new Error("Cannot cancel within 6 hours of meeting start time");
       }
 
-      // ---- Proceed with deletion ----
-      await t.result(`DELETE FROM meetings WHERE meeting_id = $1`, [meetingId]);
+      // ---- Insert into cancellations table ----
+      await t.none(
+        `INSERT INTO cancellations
+          (cancelled_by, other_party, title, description, weekday, start_time, end_time, reason, cancelled_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+        [
+          parentId,
+          meeting.teacher_id,
+          meeting.title,
+          meeting.description,
+          meeting.weekday,
+          meeting.start_time,
+          meeting.end_time,
+          reason,
+        ]
+      );
 
+      // ---- Delete the meeting ----
+      await t.none(`DELETE FROM meetings WHERE meeting_id = $1`, [meetingId]);
+
+      // ---- Restore the slot ----
       await t.none(
         `INSERT INTO teacher_availability_slots
           (teacher_id, weekday, start_time, end_time)
@@ -181,9 +200,10 @@ router.delete("/:id", requireLogin, async (req, res) => {
       return res.status(403).json({ message: err.message });
     }
     console.error("DELETE /api/meetings/:id error:", err);
-    return res.status(500).json({ message: "Error canceling meeting" });
+    return res.status(500).json({ message: err.message || "Error canceling meeting" });
   }
 });
+
 
 
 /**

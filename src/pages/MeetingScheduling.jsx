@@ -177,7 +177,7 @@ export default function MeetingScheduling({ user }) {
     }
   };
 
-    const handleDeleteMeeting = async (meetingId) => {
+  const handleDeleteMeeting = async (meetingId) => {
     try {
       await api.delete(`/api/meetings/${meetingId}`, {
         withCredentials: true,
@@ -392,7 +392,11 @@ export default function MeetingScheduling({ user }) {
         <MeetingModal
           meeting={selectedMeeting}
           onClose={() => setSelectedMeeting(null)}
-          onDeleted={() => handleDeleteMeeting(selectedMeeting.meeting_id)}
+          // IMPORTANT: onDeleted should only update UI (modal will perform the API call with reason)
+          onDeleted={(id) => {
+            setMeetings((prev) => prev.filter((m) => m.meeting_id !== id));
+            setSelectedMeeting(null);
+          }}
         />
       )}
     </div>
