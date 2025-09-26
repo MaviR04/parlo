@@ -69,6 +69,7 @@ export default function TeacherMiniNav({ roles = {}, classid }) {
 
     if (showClassLinks) {
         add("My Classes", "/teacher-dashboard");
+        add("Parents in Your Class", "/teacher/parent")
         if (actualClassId) add("Academic Dashboard", `/teacher/academic-dashboard/${actualClassId}`);
     }
 
