@@ -19,6 +19,36 @@ function dayLabel(w) {
   return DAYS.find((d) => d.value === Number(w))?.label ?? `Day ${w}`;
 }
 
+function CancelledMeetingList({ cancelled, dismiss }) {
+  if (cancelled.length === 0) return <p className="text-white">No cancelled meetings.</p>;
+  return (
+    <div className="space-y-3">
+      {cancelled.map((c) => (
+        <div
+          key={c.cancellation_id}
+          className="p-4 border rounded-lg shadow-sm bg-gray-800 flex justify-between items-center"
+        >
+          <div className="text-white">
+            <p className="font-semibold">
+              Cancelled by: {c.cancelled_fname} {c.cancelled_lname}
+            </p>
+            <p className="text-sm">Reason: {c.reason}</p>
+            <p className="text-sm">
+              Meeting: {c.title} ({c.start_time} – {c.end_time} on {dayLabel(c.weekday)})
+            </p>
+          </div>
+          <button
+            onClick={() => dismiss(c.cancellation_id)}
+            className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MeetingScheduling({ user }) {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
@@ -54,6 +84,10 @@ export default function MeetingScheduling({ user }) {
   const [meetings, setMeetings] = useState([]);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
 
+  // cancelled meetings
+  const [cancelled, setCancelled] = useState([]);
+  const [loadingCancelled, setLoadingCancelled] = useState(false);
+
   // load teachers
   useEffect(() => {
     const fetchTeachers = async () => {
@@ -88,6 +122,28 @@ export default function MeetingScheduling({ user }) {
     };
     fetchMeetings();
   }, []);
+
+  //load cancelled meetings
+  useEffect(() => {
+  const fetchCancelled = async () => {
+    setLoadingCancelled(true);
+    try {
+      const res = await api.get("/api/cancellations/my-cancellations-parent", {
+      withCredentials: true,
+    });
+
+      setCancelled(res.data?.cancellations ?? []);
+    } catch (err) {
+      console.error("Failed to load cancelled meetings:", err);
+      setCancelled([]);
+    } finally {
+      setLoadingCancelled(false);
+    }
+  };
+
+  fetchCancelled();
+}, []);
+
 
   // teacher availability
   useEffect(() => {
@@ -188,6 +244,16 @@ export default function MeetingScheduling({ user }) {
       console.error("Delete meeting error", e);
     }
   };
+
+  const dismissCancelled = async (id) => {
+    try {
+      await api.delete(`/api/cancellations/${id}`, { withCredentials: true });
+      setCancelled((prev) => prev.filter((c) => c.cancellation_id !== id));
+    } catch (err) {
+      console.error("Failed to dismiss cancellation:", err);
+    }
+  };
+
 
 
   const teacherDisplay = (t) =>
@@ -387,6 +453,20 @@ export default function MeetingScheduling({ user }) {
         </div>
       )}
 
+      {/* Cancelled Meetings list */}
+      <div className="mt-10">
+        <h2 className="text-xl font-semibold mb-4 text-white">My Cancelled Meetings</h2>
+        {loadingCancelled ? (
+          <p className="text-white">Loading cancelled meetings…</p>
+        ) : (
+          <CancelledMeetingList cancelled={cancelled} dismiss={dismissCancelled} />
+        )}
+      </div>
+
+
+
+
+
       {/* Meeting Details Modal */}
       {selectedMeeting && (
         <MeetingModal
@@ -417,3 +497,7 @@ function groupByDay(rows) {
       slots: slots.sort((x, y) => (x.start_time < y.start_time ? -1 : 1)),
     }));
 }
+
+
+
+

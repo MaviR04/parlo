@@ -158,6 +158,32 @@ router.get("/my-cancellations", requireAuth, async (req, res) => {
   }
 });
 
+// Fetch cancelled meetings for the logged-in parent
+router.get("/my-cancellations-parent", requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userID;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    console.log("Fetching parent cancellations for userID:", userId);
+
+    const cancellations = await db.any(
+      `SELECT c.cancellation_id, c.reason, c.cancelled_by, 
+              u.fname AS cancelled_fname, u.lname AS cancelled_lname,
+              m.title, m.start_time, m.end_time, m.weekday
+       FROM cancellations c
+       JOIN users u ON c.cancelled_by = u.userid
+       JOIN meetings m ON c.meeting_id = m.meeting_id
+       WHERE c.parent_id = $1
+       ORDER BY c.cancelled_at DESC`,
+      [userId]
+    );
+
+    res.json({ cancellations });
+  } catch (err) {
+    console.error("GET /my-cancellations-parent error:", err);
+    res.status(500).json({ message: "Failed to fetch cancelled meetings for parent" });
+  }
+});
 
 // Delete a cancellation record (dismiss)
 router.delete("/cancellations/:id", requireAuth, async (req, res) => {
@@ -174,7 +200,5 @@ router.delete("/cancellations/:id", requireAuth, async (req, res) => {
     res.status(500).json({ message: "Failed to delete cancellation" });
   }
 });
-
-
 
 export default router;
