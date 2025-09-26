@@ -9,6 +9,7 @@ import CalendarApp from './pages/TeacherCalendar.jsx';
 import ParentCalendarApp from './pages/ParentCalender.jsx';
 import TeacherDashboard from "./pages/TeacherDashboard.jsx";
 import StudentProfile from "./pages/StudentProfile.jsx";
+import ParentList from "./pages/TeachersParentView.jsx";
 
 import BehaviourPage from "./pages/BehaviourPage.jsx";
 import EnterGrades from "./pages/EnterGrades.jsx";
@@ -84,6 +85,7 @@ function App() {
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/admin" element={<AdminPanel user={user} />} />
         <Route path="/teacher" element={<CalendarApp user={user} />} />
+        <Route path="/teacher/parent" element={<ParentList user={user} />} />
         <Route path="/teacher-dashboard" element={<TeacherDashboard user={user} />} />
         <Route path="/calendar" element={<ParentCalendarApp user={user} />} />
         <Route path="/teacher/student/:childId" element={<StudentProfile />} />

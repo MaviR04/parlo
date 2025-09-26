@@ -114,9 +114,6 @@ function CalendarApp({user}) {
   },
 }
 
-
-  
-
   useEffect(()=>{
     api.get('/announcement/my')
       .then((res) => {
@@ -128,12 +125,17 @@ function CalendarApp({user}) {
           ...event,
           classid,
           _options: {
-            additionalClasses: [classColorMap[classid] || 'blue', event.read ? "" : "hidden"]
+            additionalClasses: [classColorMap[classid] || 'blue']
           }
         }
       })
       console.log("Events fetched:", formattedEvents)
-      eventsService.set(formattedEvents)
+      try{
+        eventsService.set(formattedEvents)
+      }
+      catch(e){
+        console.error("Error setting event:", e)
+      }
       setEvents(formattedEvents)
       })
       .catch((err) => {
@@ -293,7 +295,7 @@ function CalendarApp({user}) {
                 modalRef.current.close()
               }}
             >
-              Add Event
+              Add Announcement 
             </button>
           </div>
         </form>
