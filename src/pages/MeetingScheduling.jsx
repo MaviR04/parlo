@@ -20,6 +20,7 @@ function dayLabel(w) {
 }
 
 function CancelledMeetingList({ cancelled, dismiss }) {
+  console.log(cancelled)
   if (cancelled.length === 0) return <p className="text-white">No cancelled meetings.</p>;
   return (
     <div className="space-y-3">
@@ -30,11 +31,14 @@ function CancelledMeetingList({ cancelled, dismiss }) {
         >
           <div className="text-white">
             <p className="font-semibold">
-              Cancelled by: {c.cancelled_fname} {c.cancelled_lname}
+              Cancelled by: {c.fname} {c.lname}
             </p>
             <p className="text-sm">Reason: {c.reason}</p>
             <p className="text-sm">
-              Meeting: {c.title} ({c.start_time} – {c.end_time} on {dayLabel(c.weekday)})
+              Meeting: {c.title} 
+            </p>
+            <p className="text-sm">
+             Date & Time: ({c.start_time} – {c.end_time} on {dayLabel(c.weekday)})
             </p>
           </div>
           <button
@@ -128,7 +132,7 @@ export default function MeetingScheduling({ user }) {
   const fetchCancelled = async () => {
     setLoadingCancelled(true);
     try {
-      const res = await api.get("/api/cancellations/my-cancellations-parent", {
+      const res = await api.get("/availability/my-cancellations-parent", {
       withCredentials: true,
     });
 
@@ -247,7 +251,7 @@ export default function MeetingScheduling({ user }) {
 
   const dismissCancelled = async (id) => {
     try {
-      await api.delete(`/api/cancellations/${id}`, { withCredentials: true });
+      await api.delete(`/availability/cancellations/${id}`, { withCredentials: true });
       setCancelled((prev) => prev.filter((c) => c.cancellation_id !== id));
     } catch (err) {
       console.error("Failed to dismiss cancellation:", err);

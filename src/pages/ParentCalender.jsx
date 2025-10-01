@@ -186,7 +186,7 @@ useEffect(() => {
             onClick={() => setViewRead(v => !v)}
           >Show read announcements</div>
           {subjectsTeachers.map(s => (
-            <div key={s.id} className={(filtered.id == s.id && filtered.active ? "badge badge-primary rounded-2xl cursor-pointer border-0" : "badge badge-soft rounded-2xl cursor-pointer opacity-50 border-0" )+ " hover:opacity-100 transition " + classColorMap[parseInt(s.id)]} 
+            <div key={s.id} className={(filtered.id == s.id && filtered.active ? "badge badge-primary rounded-2xl cursor-pointer border-0 p-2" : "badge badge-soft rounded-2xl cursor-pointer opacity-50 border-0 p-2" )+ " hover:opacity-100 transition " + classColorMap[parseInt(s.id)]} 
                 onClick={(e)=>{
                    setFilterered(prev =>
                   prev.id === s.id && prev.active

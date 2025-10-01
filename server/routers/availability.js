@@ -146,7 +146,7 @@ router.get("/my-cancellations", requireAuth, async (req, res) => {
       `SELECT c.cancellation_id, c.reason, c.cancelled_by, u.fname, u.lname
        FROM cancellations c
        JOIN users u ON c.cancelled_by = u.userid
-       WHERE c.cancelled_by = $1 OR c.other_party = $1
+       WHERE c.other_party = $1
        ORDER BY c.cancelled_at DESC`,
       [userId]
     );
@@ -165,15 +165,12 @@ router.get("/my-cancellations-parent", requireAuth, async (req, res) => {
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     console.log("Fetching parent cancellations for userID:", userId);
-
+    
     const cancellations = await db.any(
-      `SELECT c.cancellation_id, c.reason, c.cancelled_by, 
-              u.fname AS cancelled_fname, u.lname AS cancelled_lname,
-              m.title, m.start_time, m.end_time, m.weekday
+      `SELECT *
        FROM cancellations c
        JOIN users u ON c.cancelled_by = u.userid
-       JOIN meetings m ON c.meeting_id = m.meeting_id
-       WHERE c.parent_id = $1
+       WHERE c.other_party = $1
        ORDER BY c.cancelled_at DESC`,
       [userId]
     );
